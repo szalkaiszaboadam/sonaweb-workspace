@@ -33,7 +33,12 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[#050505] px-4">
       <div className="w-full max-w-sm space-y-8 rounded-2xl border border-neutral-800 bg-[#0a0a0a] p-8 shadow-2xl">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-white tracking-tight">Workspace</h2>
+              <img
+  src="/logo.png" 
+  alt="SONAWEB"
+  className="h-4 w-auto object-contain shrink-0"
+/>
+          <h2 className="text-xl font-bold text-white tracking-tight">Workspace</h2>
           <p className="mt-2 text-xs text-neutral-500 uppercase tracking-widest">Hitelesítés szükséges</p>
         </div>
         
