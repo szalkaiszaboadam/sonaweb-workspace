@@ -183,9 +183,9 @@ export default function DocsPage() {
           <div className="flex-1 flex flex-col h-full">
             {/* Szerkesztő Fejléc (Mentés és Törlés gombokkal) */}
             <div className="flex items-center justify-end gap-3 p-4 border-b border-neutral-800 bg-[#111111]">
-              <div className="text-xs text-neutral-500 mr-auto hidden sm:block">
+              {/*<div className="text-xs text-neutral-500 mr-auto hidden sm:block">
                 Szerkeszti: <span className="text-neutral-300">{user?.email}</span>
-              </div>
+              </div>*/}ß
               <button
                 onClick={handleDeletePage}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-white hover:bg-red-500 rounded-lg transition-colors border border-red-500/20 hover:border-red-500"
