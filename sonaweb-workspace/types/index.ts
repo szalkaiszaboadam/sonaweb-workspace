@@ -54,13 +54,18 @@ export interface Page {
 
 export interface TimeEntry {
   id: string;
-  projectId: string;
-  taskId?: string; // Opcionális, lehet csak projektszintű is
   userId: string;
-  description: string;
-  startTime: any;
-  endTime: any | null;
-  duration: number; // Másodpercben
+  projectId: string;
+  taskId: string | null;
+  duration: number;
+  startTime: any; 
+  endTime: any;
+  description: string | null;
+  createdAt: any;
+  
+  // --- EZT A KÉT SORT ADJA HOZZÁ ---
+  userName?: string;
+  userEmail?: string;
 }
 
 export interface Activity {

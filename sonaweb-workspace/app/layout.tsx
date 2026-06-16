@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { TimerProvider } from "@/context/TimerContext"; // EZT ADJA HOZZÁ
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
     <html lang="hu">
       <body className={`${geistSans.variable} antialiased bg-gray-950 text-gray-100`}>
         <AuthProvider>
+          <TimerProvider> {/* EZT ADJA HOZZÁ */}
           {children}
+          </TimerProvider> {/* EZT ADJA HOZZÁ */}
         </AuthProvider>
       </body>
     </html>

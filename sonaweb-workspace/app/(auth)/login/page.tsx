@@ -58,7 +58,7 @@ export default function LoginPage() {
                   type="email"
                   required
                   className="w-full rounded-xl border border-neutral-800 bg-[#050505] pl-10 pr-4 py-3 text-white text-sm focus:border-sona focus:outline-none focus:ring-1 focus:ring-sona transition-all"
-                  placeholder="admin@struktur.hu"
+                  placeholder="admin@teszt.hu"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />

@@ -6,9 +6,10 @@ import { useParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Plus, Clock, AlignLeft, Loader2, CheckCircle2, Trash2 } from "lucide-react";
-import { Task, TaskStatus, TaskPriority } from "@/types";
+import { Plus, Clock, AlignLeft, Loader2, CheckCircle2, Trash2, PlayCircle } from "lucide-react";
+import { Task, TaskStatus, TaskPriority, TimeEntry } from "@/types";
 import RichTextEditor from "@/components/editor/RichTextEditor";
+import { useTimer } from "@/context/TimerContext";
 
 const COLUMNS: { id: TaskStatus; title: string }[] = [
   { id: "backlog", title: "Backlog" },
@@ -21,8 +22,10 @@ const COLUMNS: { id: TaskStatus; title: string }[] = [
 export default function TasksPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { startTimer, activeTaskId, isActive } = useTimer();
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]); // ÚJ: Időmérések állapota
   const [loading, setLoading] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -40,27 +43,48 @@ export default function TasksPage() {
     setIsMounted(true);
   }, []);
 
+  // Feladatok és Időmérések betöltése
   useEffect(() => {
     if (!projectId) return;
 
-    const q = query(
+    // 1. Feladatok lekérdezése
+    const qTasks = query(
       collection(db, "tasks"),
       where("projectId", "==", projectId),
       orderBy("createdAt", "asc")
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeTasks = onSnapshot(qTasks, (snapshot) => {
       const fetchedTasks = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+        id: doc.id, ...doc.data(),
       })) as Task[];
-      
       setTasks(fetchedTasks);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // 2. Időmérések lekérdezése a kártyákhoz
+    const qTime = query(collection(db, "time_entries"), where("projectId", "==", projectId));
+    const unsubscribeTime = onSnapshot(qTime, (snapshot) => {
+      const fetchedTime = snapshot.docs.map((doc) => ({
+        id: doc.id, ...doc.data(),
+      })) as TimeEntry[];
+      setTimeEntries(fetchedTime);
+    });
+
+    return () => {
+      unsubscribeTasks();
+      unsubscribeTime();
+    };
   }, [projectId]);
+
+  // --- Segédfüggvény a mért idő formázásához ---
+  const formatTrackedTime = (totalSeconds: number) => {
+    if (!totalSeconds) return "0p";
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    if (h > 0) return `${h}ó ${m}p`;
+    return `${m}p`;
+  };
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,8 +135,7 @@ export default function TasksPage() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm("Biztosan törölni szeretné ezt a feladatot? Ez a művelet nem vonható vissza.")) return;
-    
+    if (!confirm("Biztosan törölni szeretné ezt a feladatot?")) return;
     try {
       await deleteDoc(doc(db, "tasks", taskId));
       setIsEditModalOpen(false);
@@ -206,63 +229,97 @@ export default function TasksPage() {
                       <div className="flex flex-col gap-3 min-h-[150px]">
                         {tasks
                           .filter((task) => task.status === column.id)
-                          .map((task, index) => (
-                            <Draggable key={task.id} draggableId={task.id} index={index}>
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                  onClick={() => {
-                                    setEditingTask(task);
-                                    setIsEditModalOpen(true);
-                                  }}
-                                  className={`group relative rounded-xl border bg-[#111111] p-4 cursor-pointer transition-all ${
-                                    snapshot.isDragging
-                                      ? "border-sona/50 shadow-2xl shadow-sona/10 rotate-2 z-50"
-                                      : "border-neutral-800 hover:border-neutral-500 hover:shadow-lg"
-                                  }`}
-                                >
-                                  {task.status !== "done" && (
-                                    <button 
-                                      onClick={(e) => handleQuickComplete(task.id, e)}
-                                      className="absolute -top-2 -right-2 bg-neutral-800 hover:bg-green-500/20 text-neutral-400 hover:text-green-500 border border-neutral-700 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-all z-10 shadow-lg"
-                                    >
-                                      <CheckCircle2 className="h-4 w-4" />
-                                    </button>
-                                  )}
+                          .map((task, index) => {
+                            
+                            // TÉNYLEGES IDŐ KISZÁMÍTÁSA A KÁRTYÁHOZ
+                            const trackedSeconds = timeEntries.filter(e => e.taskId === task.id).reduce((sum, e) => sum + (e.duration || 0), 0);
+                            const estHours = task.estimatedHours || 0;
+                            const hasTracked = trackedSeconds > 0;
+                            const hasEst = estHours > 0;
+                            const isOverBudget = hasEst && (trackedSeconds / 3600) > estHours;
 
-                                  <div className="flex flex-col gap-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <h4 className={`text-sm font-medium transition-colors leading-snug ${task.status === "done" ? "text-neutral-500 line-through" : "text-white group-hover:text-sona"}`}>
-                                        {task.title}
-                                      </h4>
-                                      <div className={`shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getPriorityColor(task.priority)}`}>
-                                        {task.priority === "urgent" ? "Urgent" : task.priority}
+                            return (
+                              <Draggable key={task.id} draggableId={task.id} index={index}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    onClick={() => {
+                                      setEditingTask(task);
+                                      setIsEditModalOpen(true);
+                                    }}
+                                    className={`group relative rounded-xl border bg-[#111111] p-4 cursor-pointer transition-all ${
+                                      snapshot.isDragging
+                                        ? "border-sona/50 shadow-2xl shadow-sona/10 rotate-2 z-50"
+                                        : "border-neutral-800 hover:border-neutral-500 hover:shadow-lg"
+                                    }`}
+                                  >
+                                    {task.status !== "done" && (
+                                      <div className="absolute -top-2 -right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isActive && activeTaskId === task.id) return;
+                                            startTimer(projectId, task.id, task.title);
+                                          }}
+                                          className={`rounded-full p-1 shadow-lg border transition-all ${
+                                            isActive && activeTaskId === task.id
+                                              ? "bg-green-500/20 text-green-500 border-green-500/50 animate-pulse"
+                                              : "bg-neutral-800 hover:bg-sona/20 text-neutral-400 hover:text-sona border-neutral-700"
+                                          }`}
+                                          title={isActive && activeTaskId === task.id ? "A mérés már fut" : "Időmérő indítása"}
+                                        >
+                                          <PlayCircle className="h-4 w-4" />
+                                        </button>
+                                        <button 
+                                          onClick={(e) => handleQuickComplete(task.id, e)}
+                                          className="bg-neutral-800 hover:bg-green-500/20 text-neutral-400 hover:text-green-500 border border-neutral-700 rounded-full p-1 shadow-lg transition-all"
+                                        >
+                                          <CheckCircle2 className="h-4 w-4" />
+                                        </button>
                                       </div>
-                                    </div>
+                                    )}
 
-                                    <div className="flex items-center justify-between mt-1 pt-3 border-t border-neutral-800/60">
-                                      <div className="flex items-center gap-3 text-neutral-500">
-                                        {/* TÍPUSBIZTOS LUCIDE-REACT IKON BURKOLÁS */}
-                                        {task.description && task.description !== "<p></p>" && (
-                                          <span title="Tartalmaz leírást">
-                                            <AlignLeft className="h-3.5 w-3.5" />
-                                          </span>
-                                        )}
-                                        {(task.estimatedHours ?? 0) > 0 && (
-                                          <div className="flex items-center gap-1.5 text-xs">
-                                            <Clock className="h-3.5 w-3.5" />
-                                            <span>{task.estimatedHours}ó</span>
-                                          </div>
-                                        )}
+                                    <div className="flex flex-col gap-3">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <h4 className={`text-sm font-medium transition-colors leading-snug ${task.status === "done" ? "text-neutral-500 line-through" : "text-white group-hover:text-sona"}`}>
+                                          {task.title}
+                                        </h4>
+                                        <div className={`shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getPriorityColor(task.priority)}`}>
+                                          {task.priority === "urgent" ? "Urgent" : task.priority}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-between mt-1 pt-3 border-t border-neutral-800/60">
+                                        <div className="flex items-center gap-3 text-neutral-500">
+                                          {task.description && task.description !== "<p></p>" && (
+                                            <span title="Tartalmaz leírást">
+                                              <AlignLeft className="h-3.5 w-3.5" />
+                                            </span>
+                                          )}
+                                          
+                                          {/* IDŐMÉRŐ ÉS BECSLÉS MEGJELENÍTÉSE */}
+                                          {(hasTracked || hasEst) && (
+                                            <div 
+                                              className={`flex items-center gap-1.5 text-xs font-medium ${isOverBudget ? 'text-red-400' : 'text-neutral-400'}`}
+                                              title={`Tényleges: ${formatTrackedTime(trackedSeconds)} / Becsült: ${estHours}ó`}
+                                            >
+                                              <Clock className="h-3.5 w-3.5" />
+                                              <span>
+                                                {hasTracked ? formatTrackedTime(trackedSeconds) : '0p'}
+                                                {hasEst && ` / ${estHours}ó`}
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
+                                )}
+                              </Draggable>
+                            );
+                          })}
                         {provided.placeholder}
                       </div>
                     </div>
@@ -297,14 +354,13 @@ export default function TasksPage() {
                   type="text"
                   required
                   autoFocus
-                  className="mt-1.5 w-full rounded-xl border border-neutral-800 bg-[#0a0a0a] px-4 py-2.5 text-sm text-white placeholder-neutral-600 focus:border-sona focus:outline-none focus:ring-1 focus:ring-sona transition-all"
+                  className="mt-1.5 w-full rounded-xl border border-neutral-800 bg-[#0a0a0a] px-4 py-2.5 text-sm text-white placeholder-neutral-600 focus:border-sona focus:outline-none"
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                 />
               </div>
               <div>
                 <label className="text-xs font-medium text-neutral-400 block mb-1.5">Leírás (Rich Text)</label>
-                {/* TIPTAP BEÉPÍTÉSE */}
                 <RichTextEditor value={newTaskDesc} onChange={setNewTaskDesc} />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -356,7 +412,7 @@ export default function TasksPage() {
       {/* SZERKESZTÉS MODÁL */}
       {isEditModalOpen && editingTask && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
-          <div className="w-full max-w-4xl bg-[#111111] border border-neutral-800 rounded-2xl p-6 shadow-2xl space-y-6">
+          <div className="w-full max-w-lg bg-[#111111] border border-neutral-800 rounded-2xl p-6 shadow-2xl space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Feladat szerkesztése</h2>
               <button 
@@ -382,7 +438,6 @@ export default function TasksPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-neutral-400 block mb-1.5">Leírás (Rich Text)</label>
-                {/* TIPTAP BEÉPÍTÉSE SZERKESZTÉSHEZ */}
                 <RichTextEditor 
                   value={editingTask.description || ""} 
                   onChange={(html) => setEditingTask({ ...editingTask, description: html })} 
