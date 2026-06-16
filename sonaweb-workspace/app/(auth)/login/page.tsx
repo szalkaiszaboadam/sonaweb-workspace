@@ -7,6 +7,11 @@ import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock, Mail } from "lucide-react";
 
+import Logo from '@/public/logo.png'; // Ha az alias be van állítva
+// Vagy relatív útvonallal:
+
+import Image from 'next/image';
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [jelszo, setJelszo] = useState("");
@@ -33,13 +38,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[#050505] px-4">
       <div className="w-full max-w-sm space-y-8 rounded-2xl border border-neutral-800 bg-[#0a0a0a] p-8 shadow-2xl">
         <div className="text-center">
-              <img
-  src="/logo.png" 
-  alt="SONAWEB"
-  className="h-4 w-auto object-contain shrink-0"
-/>
-          <h2 className="text-xl font-bold text-white tracking-tight">Workspace</h2>
-          <p className="mt-2 text-xs text-neutral-500 uppercase tracking-widest">Hitelesítés szükséges</p>
+<Image src={Logo} alt="SONAWEB" />
+          
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
