@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
@@ -12,7 +12,7 @@ interface TimerContextType {
   activeTaskId: string | null;
   activeProjectId: string | null;
   activeTaskName: string | null;
-  startTimer: (projectId: string, taskId?: string, taskName?: string) => void;
+  startTimer: (projectId: string, taskId?: string, taskName?: string) => Promise<void>;
   stopTimer: () => Promise<void>;
 }
 
@@ -22,7 +22,7 @@ const TimerContext = createContext<TimerContextType>({
   activeTaskId: null,
   activeProjectId: null,
   activeTaskName: null,
-  startTimer: () => {},
+  startTimer: async () => {},
   stopTimer: async () => {},
 });
 
@@ -37,33 +37,46 @@ export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
   const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<Date | null>(null);
 
-  // 1. Oldalbetöltéskor (Hydration) megkeressük, hogy futott-e már timer
+  // 1. VALÓS IDEJŰ FELHŐALAPÚ SZINKRONIZÁCIÓ (Eszközök között)
   useEffect(() => {
-    const savedTimer = localStorage.getItem("sona_active_timer");
-    if (savedTimer) {
-      try {
-        const parsed = JSON.parse(savedTimer);
-        if (parsed.isActive && parsed.startTime) {
-          const start = new Date(parsed.startTime);
-          const now = new Date();
-          // Kiszámoljuk az eltelt másodperceket a kezdés óta
-          const diffSeconds = Math.floor((now.getTime() - start.getTime()) / 1000);
-
-          setStartTime(start);
-          setActiveProjectId(parsed.activeProjectId);
-          setActiveTaskId(parsed.activeTaskId);
-          setActiveTaskName(parsed.activeTaskName);
-          setSeconds(diffSeconds > 0 ? diffSeconds : 0);
-          setIsActive(true);
-        }
-      } catch (e) {
-        console.error("Hiba a mentett időmérő betöltésekor", e);
-        localStorage.removeItem("sona_active_timer");
-      }
+    if (!user) {
+      setIsActive(false);
+      setSeconds(0);
+      return;
     }
-  }, []);
 
-  // 2. A másodperc-számláló, ami csak akkor ketyeg, ha aktív
+    // Feliratkozunk a felhasználó saját aktív timer dokumentumára a Firestore-ban
+    const activeTimerRef = doc(db, "active_timers", user.uid);
+    
+    const unsubscribe = onSnapshot(activeTimerRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // Kezeljük a Firebase Timestamp formátumot és a sima ISO stringet is
+        const start = data.startTime?.toDate ? data.startTime.toDate() : new Date(data.startTime);
+        const now = new Date();
+        const diffSeconds = Math.floor((now.getTime() - start.getTime()) / 1000);
+
+        setStartTime(start);
+        setActiveProjectId(data.projectId);
+        setActiveTaskId(data.taskId);
+        setActiveTaskName(data.taskName);
+        setSeconds(diffSeconds > 0 ? diffSeconds : 0);
+        setIsActive(true);
+      } else {
+        // Ha törlődik a dokumentum (leállt a timer valahol), a felület is azonnal alaphelyzetbe áll
+        setIsActive(false);
+        setActiveProjectId(null);
+        setActiveTaskId(null);
+        setActiveTaskName(null);
+        setSeconds(0);
+        setStartTime(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 2. Helyi számláló az egyenletes másodpercenkénti UI frissítéshez
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isActive) {
@@ -74,56 +87,50 @@ export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
     return () => clearInterval(interval);
   }, [isActive]);
 
-  // 3. Timer elindítása és elmentése a LocalStorage-be
-  const startTimer = (projectId: string, taskId?: string, taskName?: string) => {
-    if (isActive) return;
+  // 3. Timer elindítása -> Most már közvetlenül a felhőbe írunk
+  const startTimer = async (projectId: string, taskId?: string, taskName?: string) => {
+    if (!user) return;
+
+    // Ha már fut egy mérés, az automatikus váltás logikája szerint leállítjuk azt
+    if (isActive) {
+      await stopTimer();
+    }
     
     const start = new Date();
-    setActiveProjectId(projectId);
-    setActiveTaskId(taskId || null);
-    setActiveTaskName(taskName || "Általános munka");
-    setSeconds(0);
-    setStartTime(start);
-    setIsActive(true);
 
-    // Biztonsági mentés a böngésző memóriájába
-    localStorage.setItem("sona_active_timer", JSON.stringify({
-      isActive: true,
-      startTime: start.toISOString(),
-      activeProjectId: projectId,
-      activeTaskId: taskId || null,
-      activeTaskName: taskName || "Általános munka"
-    }));
+    // A dokumentum ID-ja a user.uid lesz, így kényszerítjük ki az egyetlen futó timert
+    try {
+      await setDoc(doc(db, "active_timers", user.uid), {
+        projectId,
+        taskId: taskId || null,
+        taskName: taskName || "Általános munka",
+        startTime: start,
+      });
+    } catch (error) {
+      console.error("Hiba a timer felhőbe indításakor:", error);
+    }
   };
 
-  // 4. Timer leállítása, adatok mentése a Firestore-ba, és törlés a memóriából
+  // 4. Timer leállítása -> Áthelyezés a végleges naplóba és törlés az aktívak közül
   const stopTimer = async () => {
-    if (!isActive || !user || !activeProjectId || !startTime) return;
+    if (!user || !activeProjectId || !startTime) return;
     
+    // Lokális változókba mentjük az értékeket a Firestore aszinkron hívás előtt
     const finalSeconds = seconds;
     const project = activeProjectId;
     const task = activeTaskId;
     const taskName = activeTaskName;
     const start = startTime;
-    
-    // Azonnali vizuális leállítás, hogy gyorsnak tűnjön a felület
-    setIsActive(false);
-    setActiveProjectId(null);
-    setActiveTaskId(null);
-    setActiveTaskName(null);
-    setSeconds(0);
-    setStartTime(null);
 
-    // Töröljük a memóriából, hogy frissítés után ne induljon újra
-    localStorage.removeItem("sona_active_timer");
-
-    // Adatbázisba írás
-    // Adatbázisba írás
     try {
+      // 1. Töröljük az aktív státuszt a felhőből (az onSnapshot miatt a UI azonnal leáll minden eszközön)
+      await deleteDoc(doc(db, "active_timers", user.uid));
+
+      // 2. Elmentjük a végleges lezárt bejegyzést a munkanaplóba
       await addDoc(collection(db, "time_entries"), {
         userId: user.uid,
-        userEmail: user.email || "Ismeretlen", // Ezt mentjük mostantól!
-        userName: user.displayName || "",      // Ha van beállítva neve
+        userEmail: user.email || "Ismeretlen",
+        userName: user.displayName || "",
         projectId: project,
         taskId: task,
         duration: finalSeconds,
@@ -133,7 +140,7 @@ export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
         createdAt: serverTimestamp()
       });
     } catch (error) {
-      console.error("Hiba az idő mentésekor:", error);
+      console.error("Hiba az idő leállításakor és mentésekor:", error);
     }
   };
 
