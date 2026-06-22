@@ -4,6 +4,9 @@ import {
   useRef,
   useEffect,
   useState,
+  useCallback,
+  createContext,
+  useContext,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react'
@@ -35,6 +38,7 @@ import {
 } from 'lucide-react'
 import { caseStudies, blogPosts } from '@/lib/marketing'
 import { HeroShader } from '@/components/marketing/hero-shader'
+import { usePathname } from 'next/navigation'
 
 /* ──────────────────────────────────────────────────────────────────────
    Layout system — one shared content width + horizontal rhythm everywhere
@@ -102,7 +106,189 @@ function XIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 
-const CONTAINER = 'mx-auto w-full max-w-[1340px] px-6 sm:px-10 lg:px-20'
+// Az új, kisebb padding értékekkel (px-5, sm:px-8, lg:px-10)
+const CONTAINER = 'mx-auto w-full max-w-[1340px] px-5 sm:px-8 lg:px-10'
+
+/* ──────────────────────────────────────────────────────────────────────
+   Custom cursor — piros pötty mindenhol, kibővül a munkák fölött
+   ────────────────────────────────────────────────────────────────────── */
+
+type CursorState = {
+  active: boolean
+  label: string
+}
+
+type CursorContextValue = {
+  setCursor: (state: CursorState) => void
+  clearCursor: () => void
+}
+
+const CursorContext = createContext<CursorContextValue | null>(null)
+
+function useCustomCursor() {
+  const ctx = useContext(CursorContext)
+  if (!ctx) {
+    // Ha nincs Provider (pl. egy másik fában), legyen no-op, hogy ne dőljön el semmi
+    return { setCursor: () => {}, clearCursor: () => {} }
+  }
+  return ctx
+}
+
+function CustomCursorProvider({ children }: { children: ReactNode }) {
+  const mouseX = useMotionValue(-100)
+  const mouseY = useMotionValue(-100)
+  const smoothX = useSpring(mouseX, { damping: 28, stiffness: 380, mass: 0.4 })
+  const smoothY = useSpring(mouseY, { damping: 28, stiffness: 380, mass: 0.4 })
+
+  const [active, setActive] = useState(false)
+  const [label, setLabel] = useState('')
+  const [visible, setVisible] = useState(false)
+
+  const setCursor = useCallback((state: CursorState) => {
+    setActive(state.active)
+    setLabel(state.label)
+  }, [])
+
+  const clearCursor = useCallback(() => {
+    setActive(false)
+    setLabel('')
+  }, [])
+
+  useEffect(() => {
+    const move = (e: globalThis.MouseEvent) => {
+      mouseX.set(e.clientX)
+      mouseY.set(e.clientY)
+      if (!visible) setVisible(true)
+    }
+    const hide = () => setVisible(false)
+
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseleave', hide)
+    return () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseleave', hide)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible])
+
+  return (
+    <CursorContext.Provider value={{ setCursor, clearCursor }}>
+      {children}
+
+      {/* A kis piros pötty, ami mindig a kurzort követi — az eredeti kurzor mellett, nem helyette */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none fixed left-0 top-0 z-[200] hidden md:block"
+        style={{
+          x: smoothX,
+          y: smoothY,
+          translateX: active ? '-50%' : '0%',
+          translateY: active ? '-50%' : '0%',
+          opacity: visible ? 1 : 0,
+        }}
+        transition={{ opacity: { duration: 0.25 } }}
+      >
+        <motion.div
+          className="flex items-center justify-center overflow-hidden rounded-full bg-[#be2133] text-center text-sm font-bold uppercase leading-tight tracking-wider text-white"
+          animate={{
+            width: active ? 132 : 8,
+            height: active ? 132 : 8,
+            boxShadow: active
+              ? '0 0 40px rgba(190,33,51,0.55)'
+              : '0 0 0px rgba(190,33,51,0)',
+          }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <AnimatePresence>
+            {active && (
+              <motion.span
+                key={label}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="px-3"
+              >
+                {label}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </motion.div>
+    </CursorContext.Provider>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Smooth scroll — lerp-alapú, finom egész oldalas görgetés
+   ────────────────────────────────────────────────────────────────────── */
+
+function SmoothScroll({ children }: { children: ReactNode }) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // Respektáljuk, ha a felhasználó kevesebb mozgást kér
+    const prefersReducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+    if (prefersReducedMotion) return
+
+    const wrapper = wrapperRef.current
+    const content = contentRef.current
+    if (!wrapper || !content) return
+
+    let current = window.scrollY
+    let target = window.scrollY
+    let rafId = 0
+    const ease = 0.085 // kisebb = "lazább"/smoothabb scroll
+
+    const setHeight = () => {
+      document.body.style.height = `${content.getBoundingClientRect().height}px`
+    }
+
+    const onScroll = () => {
+      target = window.scrollY
+    }
+
+    const render = () => {
+      current += (target - current) * ease
+      if (Math.abs(target - current) < 0.05) current = target
+
+      content.style.transform = `translate3d(0, ${-current}px, 0)`
+      rafId = requestAnimationFrame(render)
+    }
+
+    setHeight()
+    wrapper.style.position = 'fixed'
+    wrapper.style.top = '0'
+    wrapper.style.left = '0'
+    wrapper.style.width = '100%'
+    wrapper.style.willChange = 'transform'
+
+    window.addEventListener('scroll', onScroll)
+    window.addEventListener('resize', setHeight)
+
+    const resizeObserver = new ResizeObserver(setHeight)
+    resizeObserver.observe(content)
+
+    rafId = requestAnimationFrame(render)
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', setHeight)
+      resizeObserver.disconnect()
+      document.body.style.height = ''
+    }
+  }, [])
+
+  return (
+    <div ref={wrapperRef}>
+      <div ref={contentRef}>{children}</div>
+    </div>
+  )
+}
 
 /* ──────────────────────────────────────────────────────────────────────
    Motion helpers
@@ -142,65 +328,35 @@ function MagneticButton({
   href,
   onClick,
   ariaLabel,
-  strength = 0.35,
 }: {
   children: ReactNode
   className?: string
   href?: string
   onClick?: () => void
   ariaLabel?: string
-  strength?: number
 }) {
-  const ref = useRef<HTMLSpanElement>(null)
-  const x = useMotionValue(0)
-  const y = useMotionValue(0)
-  const sx = useSpring(x, { stiffness: 200, damping: 16 })
-  const sy = useSpring(y, { stiffness: 200, damping: 16 })
-
-  const handle = (e: ReactMouseEvent) => {
-    const el = ref.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    x.set((e.clientX - (rect.left + rect.width / 2)) * strength)
-    y.set((e.clientY - (rect.top + rect.height / 2)) * strength)
-  }
-  const reset = () => {
-    x.set(0)
-    y.set(0)
-  }
-
-  const inner = (
-    <motion.span
-      ref={ref}
-      style={{ x: sx, y: sy }}
-      onMouseMove={handle}
-      onMouseLeave={reset}
-      whileTap={{ scale: 0.96 }}
-      className={className}
-    >
-      {children}
-    </motion.span>
-  )
+  // A kapott osztályokat kiegészítjük a sima színátmenettel
+  const combinedClassName = `transition-colors duration-300 ${className}`
 
   if (href) {
     return (
-      <Link href={href} aria-label={ariaLabel} className="inline-flex">
-        {inner}
+      <Link href={href} aria-label={ariaLabel} className={combinedClassName}>
+        {children}
       </Link>
     )
   }
+  
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={ariaLabel}
-      className="inline-flex"
+      className={combinedClassName}
     >
-      {inner}
+      {children}
     </button>
   )
 }
-
 function RevealWord({
   word,
   progress,
@@ -259,56 +415,45 @@ function Manifesto({ text }: { text: string }) {
    Local data
    ────────────────────────────────────────────────────────────────────── */
 
-const SERVICES = [
+
+   const SERVICES = [
   {
     id: '01',
-    title: 'Website Development',
+    title: 'Develop', // Rövidítve
     slug: 'website-development',
-    icon: Globe,
-    desc: 'Conversion-first, high-performance sites engineered in Next.js.',
-    span: 'lg:col-span-7',
+    label: 'PERFORMANCE',
+    previewUrl: '/placeholder.svg',
   },
   {
     id: '02',
-    title: 'Short-Form Video',
+    title: 'Short Video', // Rövidítve
     slug: 'short-form-video',
-    icon: Video,
-    desc: 'Scroll-stopping TikTok & Reels — concepted, shot and edited.',
-    span: 'lg:col-span-5',
+    label: 'CONTENT',
+    previewUrl: '/placeholder.svg',
   },
   {
     id: '03',
-    title: 'Paid Advertising',
+    title: 'Adver', // Rövidítve
     slug: 'facebook-ads',
-    icon: Megaphone,
-    desc: 'Profit-obsessed media buying across Meta, TikTok and beyond.',
-    span: 'lg:col-span-5',
+    label: 'GROWTH',
+    previewUrl: '/placeholder.svg',
   },
   {
     id: '04',
-    title: 'Content & Graphics',
+    title: 'Social', // Rövidítve
     slug: 'social-content-graphics',
-    icon: LayoutGrid,
-    desc: 'On-brand social content that builds a feed worth following.',
-    span: 'lg:col-span-7',
+    label: 'BRANDING',
+    previewUrl: '/placeholder.svg',
   },
   {
     id: '05',
-    title: 'Email Marketing',
+    title: 'Marketing', // Rövidítve
     slug: 'email-marketing',
-    icon: Mail,
-    desc: 'Lifecycle flows that turn lists into predictable revenue.',
-    span: 'lg:col-span-6',
-  },
-  {
-    id: '06',
-    title: 'Photography',
-    slug: 'photography',
-    icon: Camera,
-    desc: 'Premium brand and product visuals that elevate everything.',
-    span: 'lg:col-span-6',
+    label: 'RETENTION',
+    previewUrl: '/placeholder.svg',
   },
 ]
+
 
 const TESTIMONIALS = [
   {
@@ -369,209 +514,294 @@ const FAQS = [
 /* ──────────────────────────────────────────────────────────────────────
    Navbar (transparent glass, overlaid on the hero shader)
    ────────────────────────────────────────────────────────────────────── */
-
 function Navbar() {
+  const [isOpen, setIsOpen] = useState(false)
+  const pathname = usePathname()
+
+  useEffect(() => {
+    setIsOpen(false)
+    document.body.style.overflow = ''
+  }, [pathname])
+
+  const toggleMenu = () => {
+    setIsOpen(!isOpen)
+    document.body.style.overflow = !isOpen ? 'hidden' : ''
+  }
+
+  const customEase = [0.76, 0, 0.24, 1] as [number, number, number, number]
+  const linkEase = [0.16, 1, 0.3, 1] as [number, number, number, number]
+
+  const menuVariants = {
+    closed: {
+      x: '100%',
+      transition: { duration: 0.8, ease: customEase }
+    },
+    opened: {
+      x: '0%',
+      transition: { duration: 0.8, ease: customEase }
+    }
+  }
+
+  const linkVariants = {
+    initial: { x: 80, opacity: 0 },
+    animate: (i: number) => ({
+      x: 0,
+      opacity: 1,
+      transition: { delay: 0.4 + i * 0.1, duration: 0.8, ease: linkEase }
+    })
+  }
+
+  const navLinks = [
+    { title: 'Work', href: '/references' },
+    { title: 'Services', href: '/services' },
+    { title: 'Journal', href: '/blog' },
+    { title: 'About Us', href: '/about' },
+    { title: 'Client Portal', href: '/client' },
+  ]
+
   return (
-    <motion.header
-      initial={{ y: -40, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.7, ease: EASE }}
-      // Az absolute pozíció biztosítja, hogy a navbar a helyén maradjon görgetéskor
-      className="absolute inset-x-0 top-0 z-50 bg-transparent"
-    >
-      <div className={`${CONTAINER} flex items-center justify-between py-6 md:py-8`}>
-        
-        {/* Bal oldal: Logó */}
-        <Link href="/" aria-label="SONAWEB home" className="flex items-center shrink-0">
-          <img
-            src="/sonaweb-logo-white.png"
-            alt="SONAWEB"
-            className="h-4 w-auto object-contain md:h-5"
-          />
-        </Link>
+    <>
+      <motion.header
+        initial={{ y: -40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.7, ease: linkEase }}
+        // ÚJ: mix-blend-difference alkalmazása, amikor a menü be van zárva
+        className={`fixed top-0 inset-x-0 z-[70] w-full bg-transparent transition-colors duration-300 ${
+          !isOpen ? 'mix-blend-difference' : ''
+        }`}
+      >
+        <div className={`${CONTAINER} flex items-center justify-between py-6`}>
+          <Link href="/" aria-label="SONAWEB home" className="flex items-center">
+            <img
+              src="/sonaweb-logo-white.png"
+              alt="SONAWEB"
+              className="h-5 w-auto object-contain md:h-7"
+            />
+          </Link>
 
-        {/* Közép: Fő navigációs linkek (Asztali nézetben) */}
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium tracking-wide">
-          <Link href="/references" className="relative text-white/70 transition-colors hover:text-white group py-2">
-            Work
-            <span className="absolute bottom-0 left-0 w-0 h-[2px] bg-[#be2133] transition-all duration-300 group-hover:w-full" />
-          </Link>
-          <Link href="/services" className="relative text-white/70 transition-colors hover:text-white group py-2">
-            Services
-            <span className="absolute bottom-0 left-0 w-0 h-[2px] bg-[#be2133] transition-all duration-300 group-hover:w-full" />
-          </Link>
-          <Link href="/blog" className="relative text-white/70 transition-colors hover:text-white group py-2">
-            Journal
-            <span className="absolute bottom-0 left-0 w-0 h-[2px] bg-[#be2133] transition-all duration-300 group-hover:w-full" />
-          </Link>
-          <Link href="/about" className="relative text-white/70 transition-colors hover:text-white group py-2">
-            About Us
-            <span className="absolute bottom-0 left-0 w-0 h-[2px] bg-[#be2133] transition-all duration-300 group-hover:w-full" />
-          </Link>
-        </nav>
-
-        {/* Jobb oldal: Felhasználói zóna és elsődleges CTA */}
-        <div className="flex items-center gap-6">
-          <Link 
-            href="/client" 
-            className="hidden sm:inline-flex text-sm font-medium text-white/60 transition-colors hover:text-white py-2"
+          <button
+            onClick={toggleMenu}
+            className="group flex h-10 w-10 flex-col items-center justify-center gap-1.5 focus:outline-none"
+            aria-label="Toggle menu"
           >
-            Client Portal
-          </Link>
-
-          <MagneticButton
-            href="/book"
-            ariaLabel="Book a call"
-            className="flex items-center justify-center rounded-lg bg-white/[0.06] border border-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition-colors hover:bg-white/15"
-          >
-            Book a Call
-          </MagneticButton>
+            <motion.span
+              animate={isOpen ? { rotate: 45, y: 8 } : { rotate: 0, y: 0 }}
+              className="h-0.5 w-7 bg-white transition-colors group-hover:bg-[#be2133]"
+            />
+            <motion.span
+              animate={isOpen ? { opacity: 0 } : { opacity: 1 }}
+              className="h-0.5 w-7 bg-white transition-colors group-hover:bg-[#be2133]"
+            />
+            <motion.span
+              animate={isOpen ? { rotate: -45, y: -8 } : { rotate: 0, y: 0 }}
+              className="h-0.5 w-7 bg-white transition-colors group-hover:bg-[#be2133]"
+            />
+          </button>
         </div>
+      </motion.header>
 
-      </div>
-    </motion.header>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.nav
+            variants={menuVariants}
+            initial="closed"
+            animate="opened"
+            exit="closed"
+            className="fixed inset-0 z-[60] flex flex-col bg-[#070707] pt-24 sm:pt-32"
+          >
+            <div className="absolute right-0 top-0 h-[600px] w-[600px] rounded-full bg-[#be2133]/5 blur-[120px]" />
+
+            <div className={`${CONTAINER} flex flex-col justify-between pb-12 h-full relative z-10`}>
+              <div className="flex flex-col gap-4 mt-12">
+                {navLinks.map((link, i) => (
+                  <Link key={link.title} href={link.href} className="group overflow-hidden py-1">
+                    <motion.span
+                      custom={i}
+                      variants={linkVariants}
+                      initial="initial"
+                      animate="animate"
+                      className="block text-[clamp(3rem,8vw,7rem)] font-black uppercase leading-none tracking-tighter text-white transition-colors group-hover:text-[#be2133]"
+                    >
+                      {link.title}
+                    </motion.span>
+                  </Link>
+                ))}
+              </div>
+
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8 }}
+                className="flex flex-col md:flex-row justify-between border-t border-white/10 pt-8 gap-6"
+              >
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/30">Connect</p>
+                  <a href="mailto:hello@sonaweb.com" className="text-lg text-white/70 hover:text-white transition-colors">hello@sonaweb.com</a>
+                </div>
+                <div className="flex gap-6">
+                  <a href="#" className="text-white/40 hover:text-[#be2133] transition-colors font-bold uppercase text-xs tracking-widest">Instagram</a>
+                  <a href="#" className="text-white/40 hover:text-[#be2133] transition-colors font-bold uppercase text-xs tracking-widest">LinkedIn</a>
+                  <a href="#" className="text-white/40 hover:text-[#be2133] transition-colors font-bold uppercase text-xs tracking-widest">Twitter / X</a>
+                </div>
+              </motion.div>
+            </div>
+          </motion.nav>
+        )}
+      </AnimatePresence>
+    </>
   )
 }
 
+
 /* ──────────────────────────────────────────────────────────────────────
-   Footer (minimal, borderless)
+   Footer (Ultra-minimalista, elválasztó vonal nélkül)
    ────────────────────────────────────────────────────────────────────── */
 
 function Footer() {
   return (
-    <footer className="border-t border-white/[0.05] bg-[#070707] pt-20 md:pt-32">
-      <Reveal y={20} delay={0.1}>
-        <div className={`${CONTAINER} pb-12`}>
-          <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-5 lg:gap-8">
-
-            {/* Brand & Mission */}
-            <div className="flex flex-col gap-6 lg:col-span-2 lg:pr-12">
-              <Link href="/" aria-label="SONAWEB home">
-                <img
-                  src="/sonaweb-logo-white.png"
-                  alt="SONAWEB"
-                  className="h-6 w-auto object-contain"
-                />
-              </Link>
-              <p className="max-w-sm text-pretty text-sm leading-relaxed text-white/55">
-                We are a strategic partner obsessed with crafting digital experiences that drive tangible outcomes and turn ambition into an unfair advantage.
-              </p>
-              {/* Social Icons */}
-              <div className="mt-2 flex items-center gap-5">
-                <a
-                  href="https://instagram.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-white/40 transition-colors hover:text-[#be2133]"
-                  aria-label="Instagram"
-                >
-                  <InstagramIcon className="h-5 w-5" />
-                </a>
-                <a
-                  href="https://linkedin.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-white/40 transition-colors hover:text-[#be2133]"
-                  aria-label="LinkedIn"
-                >
-                  <LinkedinIcon className="h-5 w-5" />
-                </a>
-                <a
-                  href="https://x.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-white/40 transition-colors hover:text-[#be2133]"
-                  aria-label="X (Twitter)"
-                >
-                  <XIcon className="h-4 w-4" /> {/* Kicsit kisebbre véve, mert az X logó aránya más */}
-                </a>
-              </div>
-            </div>
-
-            {/* Navigation - Company */}
-            <div className="flex flex-col gap-5">
-              <h4 className="text-sm font-semibold tracking-wider text-white">Company</h4>
-              <nav className="flex flex-col gap-3 text-sm text-white/55">
-                <Link href="/references" className="transition-colors hover:text-white">Work</Link>
-                <Link href="/services" className="transition-colors hover:text-white">Services</Link>
-                <Link href="/blog" className="transition-colors hover:text-white">Journal</Link>
-                <Link href="/about" className="transition-colors hover:text-white">About Us</Link>
-              </nav>
-            </div>
-
-            {/* Navigation - Connect */}
-            <div className="flex flex-col gap-5">
-              <h4 className="text-sm font-semibold tracking-wider text-white">Connect</h4>
-              <nav className="flex flex-col gap-3 text-sm text-white/55">
-                <a href="mailto:hello@sonaweb.com" className="transition-colors hover:text-white">hello@sonaweb.com</a>
-                <Link href="/book" className="transition-colors hover:text-white">Book a Call</Link>
-                <Link href="/client" className="transition-colors hover:text-white">Client Portal</Link>
-              </nav>
-            </div>
-
-            {/* Navigation - Legal */}
-            <div className="flex flex-col gap-5">
-              <h4 className="text-sm font-semibold tracking-wider text-white">Legal</h4>
-              <nav className="flex flex-col gap-3 text-sm text-white/55">
-                <Link href="/privacy" className="transition-colors hover:text-white">Privacy Policy</Link>
-                <Link href="/terms" className="transition-colors hover:text-white">Terms of Service</Link>
-              </nav>
-            </div>
+    <footer className="relative z-10 w-full">
+      {/* Az elválasztó vonal (border-t) eltávolítva, a tartalom teljesen letisztult */}
+      <div className={`${CONTAINER} flex flex-col items-center justify-between gap-6 pb-6 pt-6 text-[11px] font-bold uppercase tracking-[0.15em] text-white/80 sm:flex-row`}>
+        
+        {/* Bal oldal: Copyright és a közösségi ikonok egymás mellett, ahogy a mintaképen látható */}
+        <div className="flex flex-col items-center gap-5 sm:flex-row sm:gap-6">
+          <span className="tracking-[0.12em]">
+            © {new Date().getFullYear()} SONAWEB. ALL RIGHTS RESERVED.
+          </span>
+          
+          <div className="flex items-center gap-2.5">
+            <a 
+              href="https://instagram.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex h-7 w-7 items-center justify-center rounded-md border-[1.5px] border-white/60 transition-colors hover:bg-white hover:text-[#be2133]"
+              aria-label="Instagram"
+            >
+              <InstagramIcon className="h-3.5 w-3.5" />
+            </a>
+            <a 
+              href="https://x.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex h-7 w-7 items-center justify-center rounded-md border-[1.5px] border-white/60 transition-colors hover:bg-white hover:text-[#be2133]"
+              aria-label="X (Twitter)"
+            >
+              <XIcon className="h-3 w-3" />
+            </a>
+            <a 
+              href="https://linkedin.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex h-7 w-7 items-center justify-center rounded-md border-[1.5px] border-white/60 transition-colors hover:bg-white hover:text-[#be2133]"
+              aria-label="LinkedIn"
+            >
+              <LinkedinIcon className="h-3.5 w-3.5" />
+            </a>
           </div>
+        </div>
 
-          {/* Bottom Bar */}
-          <div className="mt-20 flex flex-col items-center justify-between border-t border-white/[0.05] pt-8 text-xs text-white/35 sm:flex-row">
-            <p>{`© ${new Date().getFullYear()} SONAWEB. All rights reserved.`}</p>
-            <div className="mt-3 flex items-center gap-4 sm:mt-0">
-              <p>Crafted for ambitious brands.</p>
-            </div>
-          </div>
-      
-    </div>
-    </Reveal>
-    </footer >
+        {/* Jobb oldal: Jogi linkek egy vonalban */}
+        <div className="flex items-center gap-6 tracking-[0.12em]">
+          <Link href="/privacy" className="transition-colors hover:text-white opacity-80 hover:opacity-100">
+            Privacy Policy
+          </Link>
+          <Link href="/terms" className="transition-colors hover:text-white opacity-80 hover:opacity-100">
+            Terms of Service
+          </Link>
+        </div>
+
+      </div>
+    </footer>
   )
 }
+
 /* ──────────────────────────────────────────────────────────────────────
-   Services — premium bento capability showcase
+   Interactive Service List (Awwwards stílusú tipográfia hover effekttel)
    ────────────────────────────────────────────────────────────────────── */
 
-function ServiceCard({
-  srv,
-  index,
-}: {
-  srv: (typeof SERVICES)[number]
-  index: number
-}) {
-  const Icon = srv.icon
+function InteractiveServiceList() {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+
   return (
-    <Reveal delay={index * 0.06} className={srv.span}>
-      <Link
-        href={`/services/${srv.slug}`}
-        className="group relative flex h-full min-h-[16rem] flex-col justify-between overflow-hidden rounded-2xl bg-[#0f0f0f] p-8 transition-colors duration-500 hover:bg-[#141414] md:min-h-[19rem] md:p-10"
-      >
-        {/* hover gradient wash */}
-        <span className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#be2133]/20 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-        {/* oversized watermark numeral */}
-        <span className="pointer-events-none absolute -right-4 -top-10 select-none font-black leading-none tracking-tighter text-white/[0.04] transition-all duration-700 group-hover:text-white/[0.07] text-[10rem] md:text-[13rem]">
-          {srv.id}
-        </span>
+    <div className="relative flex flex-col items-center justify-center w-full py-10">
+      {SERVICES.map((srv, i) => {
+        const isHovered = hoveredIndex === i
+        const isAnyHovered = hoveredIndex !== null
 
-        <div className="relative z-10 flex items-start justify-between">
-          <span className="grid h-14 w-14 place-items-center rounded-xl bg-white/[0.05] transition-all duration-500 group-hover:scale-110 group-hover:bg-[#be2133]">
-            <Icon className="h-6 w-6 text-white/70 transition-colors duration-500 group-hover:text-white" />
-          </span>
-          <ArrowUpRight className="h-6 w-6 text-white/25 transition-all duration-500 group-hover:rotate-45 group-hover:text-[#be2133]" />
-        </div>
+        return (
+          <div
+            key={srv.id}
+            // Még szorosabb térköz a sorok között (py-1 md:py-2)
+            className="group relative flex w-full cursor-pointer items-center justify-center py-1 md:py-2"
+            onMouseEnter={() => setHoveredIndex(i)}
+            onMouseLeave={() => setHoveredIndex(null)}
+          >
+            {/* Lebegő kép */}
+            <AnimatePresence>
+              {isHovered && (
+                <motion.div
+                  initial={{ opacity: 0, x: -40, rotate: -4 }}
+                  animate={{ opacity: 1, x: 0, rotate: 0 }}
+                  exit={{ opacity: 0, x: -40, rotate: -4 }}
+                  transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  className="pointer-events-none absolute left-4 lg:left-8 z-20 hidden md:block h-[220px] w-[320px] overflow-hidden rounded-xl shadow-2xl"
+                >
+                  <Image
+                    src={srv.previewUrl}
+                    alt={srv.title}
+                    fill
+                    className="object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/30" />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        <div className="relative z-10 mt-10">
-          <h3 className="text-balance text-3xl font-bold tracking-tight text-white md:text-4xl">
-            {srv.title}
-          </h3>
-          <p className="mt-3 max-w-md text-pretty text-white/55">{srv.desc}</p>
-        </div>
-      </Link>
-    </Reveal>
+            {/* A hatalmas, tömör szöveg */}
+            <Link href={`/services/${srv.slug}`} className="relative z-10 w-full text-center">
+              <span
+                // Nagyobb méret (11rem) és szorosabb sorköz/betűköz (leading-[0.85] tracking-[-0.04em])
+                className={`inline-block font-black uppercase tracking-[-0.04em] transition-all duration-500 ease-out text-[clamp(3.5rem,10vw,11rem)] leading-[0.85] ${
+                  !isAnyHovered
+                    ? 'text-white' 
+                    : isHovered
+                    ? 'text-white' 
+                    : 'text-white/15' 
+                }`}
+              >
+                {srv.title}
+              </span>
+            </Link>
+
+            {/* Kiegészítő címke a jobb szélen */}
+            <AnimatePresence>
+              {isHovered && (
+                <motion.span
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  className="pointer-events-none absolute right-4 lg:right-8 z-20 hidden md:block text-sm font-mono font-bold uppercase tracking-[0.2em] text-white/50"
+                >
+                  {srv.label}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </div>
+        )
+      })}
+
+      {/* ── All Services Gomb ── */}
+      <Reveal delay={0.2} className="mt-20">
+        <MagneticButton
+          href="/services"
+          className="group flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-8 py-4 text-xs font-bold uppercase tracking-widest text-white backdrop-blur-md transition-all hover:bg-white/10 hover:border-white/20"
+        >
+          All services
+          <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+        </MagneticButton>
+      </Reveal>
+    </div>
   )
 }
 
@@ -643,92 +873,49 @@ function StackedWorkCard({
   cs: (typeof caseStudies)[number]
   index: number
 }) {
-  const ref = useRef<HTMLDivElement>(null)
-  
-  // A görgetés alapú kicsinyítési (scale) effektus teljes mértékben eltávolítva
-
-  const [isHovered, setIsHovered] = useState(false)
-  const mouseX = useMotionValue(0)
-  const mouseY = useMotionValue(0)
-  
-  const smoothX = useSpring(mouseX, { damping: 20, stiffness: 300, mass: 0.5 })
-  const smoothY = useSpring(mouseY, { damping: 20, stiffness: 300, mass: 0.5 })
-
-  const handleMouseMove = (e: ReactMouseEvent<HTMLAnchorElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    mouseX.set(e.clientX - rect.left)
-    mouseY.set(e.clientY - rect.top)
-  }
+  const { setCursor, clearCursor } = useCustomCursor()
 
   return (
-    <div
-      ref={ref}
-      className="sticky top-28 mb-24 flex h-[75vh] w-full flex-col items-center justify-center pt-8 last:mb-0"
-      style={{ perspective: '1200px' }}
+    <motion.div
+      initial={{ opacity: 0, y: 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-80px' }}
+      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: (index % 2) * 0.08 }}
+      className="group flex w-full flex-col gap-5"
     >
-      <motion.div
-        // A kártya megtartja fix méretét, nem megy végbe méretcsökkenés görgetéskor
-        initial={{ opacity: 0, rotateX: 15, y: 80 }}
-        whileInView={{ opacity: 1, rotateX: 0, y: 0 }}
-        viewport={{ once: true, margin: '-100px' }}
-        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        className="relative h-full w-full overflow-hidden rounded-[2rem] bg-[#0c0c0c] shadow-2xl"
+      <Link
+        href={`/references/${cs.category}/${cs.slug}`}
+        className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-[#0c0c0c]"
+        onMouseEnter={() => setCursor({ active: true, label: 'View' })}
+        onMouseLeave={clearCursor}
       >
-        <Link 
-          href={`/references/${cs.category}/${cs.slug}`}
-          className="group absolute inset-0 z-20"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          onMouseMove={handleMouseMove}
-        >
-          <motion.div
-            className="pointer-events-none absolute left-0 top-0 flex h-28 w-28 items-center justify-center rounded-full bg-[#be2133] text-center text-sm font-bold uppercase leading-tight tracking-wider text-white shadow-[0_0_30px_rgba(190,33,51,0.4)] z-50"
-            style={{
-              x: smoothX,
-              y: smoothY,
-              translateX: '-50%',
-              translateY: '-50%',
-            }}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: isHovered ? 1 : 0, opacity: isHovered ? 1 : 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-          >
-            View<br />Project
-          </motion.div>
-        </Link>
+        <Image
+          src={cs.image || '/placeholder.svg'}
+          alt={cs.client}
+          fill
+          priority={index === 0}
+          sizes="(max-width: 768px) 100vw, 50vw"
+          className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+        />
+      </Link>
 
-        <div className="pointer-events-none relative z-10 h-full w-full">
-          <Image
-            src={cs.image || '/placeholder.svg'}
-            alt={cs.client}
-            fill
-            priority={index === 0}
-            className="object-cover opacity-60 transition-transform duration-[1.5s] ease-out group-hover:scale-105 group-hover:opacity-40"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#070707] via-[#070707]/40 to-transparent" />
-
-          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-6 p-8 md:flex-row md:items-end md:justify-between md:p-12">
-            <div className="max-w-2xl">
-              <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium uppercase tracking-[0.16em] text-white/55">
-                <span>{cs.industry}</span>
-                <span className="h-1 w-1 rounded-full bg-white/30" />
-                <span>{cs.serviceType || 'Web Development'}</span>
-              </div>
-              <h3 className="text-balance text-4xl font-black tracking-tight text-white md:text-6xl">
-                {cs.client}
-              </h3>
-              <p className="mt-4 max-w-xl text-pretty text-lg text-white/80">
-                {cs.resultSummary || 'Részletes esettanulmány a projekt kihívásairól és eredményeiről.'}
-              </p>
-            </div>
-
-            <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-white/10 backdrop-blur-md transition-all duration-500 group-hover:-translate-y-2 group-hover:bg-[#be2133] group-hover:rotate-45">
-              <ArrowUpRight className="h-7 w-7 text-white" />
-            </span>
-          </div>
+      {/* A szöveges rész letisztultan, a kép alatt */}
+      <div className="flex flex-col gap-2 px-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white/50">
+          <span>{cs.industry}</span>
+          <span className="h-1 w-1 rounded-full bg-white/20" />
+          <span>{cs.serviceType || 'Web Development'}</span>
         </div>
-      </motion.div>
-    </div>
+        <h3 className="text-2xl font-bold tracking-tight text-white md:text-3xl">
+          <Link 
+            href={`/references/${cs.category}/${cs.slug}`} 
+            className="transition-colors hover:text-[#be2133]"
+          >
+            {cs.client}
+          </Link>
+        </h3>
+      </div>
+    </motion.div>
   )
 }
 
@@ -821,7 +1008,8 @@ function TestimonialCarousel() {
       <div
         ref={trackRef}
         onScroll={handleScroll}
-        className="no-scrollbar flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth pb-8 pl-6 sm:pl-10 lg:pl-[calc(max(0px,(100%-1340px)/2)+5rem)] scroll-pl-6 sm:scroll-pl-10 lg:scroll-pl-[calc(max(0px,(100%-1340px)/2)+5rem)]"
+        // A pl és scroll-pl értékeket hozzáigazítottuk a CONTAINER új belső paddingjához
+        className="no-scrollbar flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth pb-8 pl-5 sm:pl-8 lg:pl-[calc(max(0px,(100%-1340px)/2)+2.5rem)] scroll-pl-5 sm:scroll-pl-8 lg:scroll-pl-[calc(max(0px,(100%-1340px)/2)+2.5rem)]"
       >
         {TESTIMONIALS.map((t, i) => (
           <div
@@ -938,7 +1126,9 @@ export default function HomePage() {
   const latestPosts = blogPosts.slice(0, 3)
   const [openFaq, setOpenFaq] = useState<number | null>(0)
 
-  const heroRef = useRef(null)
+  // Erre a referenciára lesz szükségünk, hogy a képeket ne lehessen kihúzni a képernyőről
+  const heroRef = useRef<HTMLDivElement>(null)
+  
   const { scrollYProgress: heroScroll } = useScroll({
     target: heroRef,
     offset: ['start start', 'end start'],
@@ -946,69 +1136,122 @@ export default function HomePage() {
   const heroY = useTransform(heroScroll, [0, 1], ['0%', '24%'])
   const heroOpacity = useTransform(heroScroll, [0, 0.8], [1, 0])
 
+  // A dobálható kártyák pozíciói és méretei
+// A dobálható kártyák pozíciói és méretei (Navbar vonala alatt kezdődnek, 6 db kép)
+// A dobálható kártyák pozíciói és méretei (Navbar vonala alatt, letisztultabb elrendezésben, 4 db kép)
+// A dobálható kártyák pozíciói és méretei (Navbar vonala alatt, 4 db kép, 16:10 / 16:9 böngészőablak arányban)
+  const draggableCards = [
+    { id: 1, src: '/marketing/gaz.png', top: '24%', left: '4%', rotate: -12, w: 'w-56 md:w-80', h: 'h-36 md:h-48' },
+    { id: 2, src: '/marketing/bori.png', top: '28%', right: '5%', rotate: 8, w: 'w-64 md:w-96', h: 'h-40 md:h-60' },
+    { id: 3, src: caseStudies[2]?.image || '/placeholder.svg', bottom: '15%', left: '8%', rotate: -6, w: 'w-60 md:w-80', h: 'h-40 md:h-52' },
+    { id: 4, src: caseStudies[3]?.image || '/placeholder.svg', bottom: '10%', right: '8%', rotate: 14, w: 'w-64 md:w-80', h: 'h-40 md:h-48' },
+  ]
+
   return (
-    <div className="min-h-screen bg-[#070707] font-sans text-[#f5f1ef] selection:bg-[#be2133] selection:text-white">
+    <CustomCursorProvider>
+      <Navbar />
+      <SmoothScroll>
+        <div className="min-h-screen overflow-x-hidden bg-[#070707] font-sans text-[#f5f1ef] selection:bg-[#be2133] selection:text-white">
+          
       {/* ── Hero ─────────────────────────────────────────────── */}
       <section
         ref={heroRef}
         className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden pb-28 pt-32"
       >
-        {/* animated red/black shader backdrop */}
         <HeroShader />
 
-        <Navbar />
+        {/* Draggable Képek Rétege */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none hidden md:block">
+          {draggableCards.map((card, i) => (
+            <motion.div
+              key={card.id}
+              drag
+              dragConstraints={heroRef}
+              dragElastic={0.2}
+              whileDrag={{ scale: 1.05, zIndex: 50, cursor: 'grabbing' }}
+              initial={{ opacity: 0, scale: 0.5, rotate: 0 }}
+              animate={{ opacity: 1, scale: 1, rotate: card.rotate }}
+              transition={{ 
+                duration: 0.8, 
+                delay: 0.2 + i * 0.1, 
+                ease: [0.16, 1, 0.3, 1] 
+              }}
+              className={`absolute ${card.w} ${card.h} group overflow-hidden rounded-2xl shadow-2xl cursor-grab pointer-events-auto bg-[#0c0c0c] border border-white/10`}
+              style={{
+                top: card.top,
+                bottom: card.bottom,
+                left: card.left,
+                right: card.right,
+              }}
+            >
+              {/* Alapértelmezett sötétítő réteg, ami interakcióra eltűnik */}
+              <motion.div
+                className="absolute inset-0 z-10 bg-black/50 transition-opacity duration-300 pointer-events-none group-hover:opacity-0 group-active:opacity-0"
+              />
+              <Image
+                src={card.src}
+                alt="Work preview"
+                fill
+                priority
+                draggable={false} // <-- EZ TILTJA LE A BÖNGÉSZŐ ALAPÉRTELMEZETT HÚZÁSÁT
+                className="object-cover pointer-events-none select-none" // <-- EZ PEDI GONDOSKODIK RÓLA, HOGY NE LEHESSEN KIJELÖLNI
+                sizes="(max-width: 768px) 100vw, 33vw"
+              />
+            </motion.div>
+          ))}
+        </div>
 
         <motion.div
           style={{ y: heroY, opacity: heroOpacity }}
-          className={`${CONTAINER} relative z-10 flex flex-col items-center text-center`}
+          className={`${CONTAINER} relative z-10 flex flex-col items-center text-center pointer-events-none`}
         >
-          <h1 className="text-balance text-[clamp(2.8rem,9.5vw,8.5rem)] font-black uppercase leading-[0.86] tracking-tight">
-            {['Engineering', 'digital'].map((word, i) => (
-              <motion.span
-                key={word}
-                initial={{ opacity: 0, y: '60%' }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.9, delay: 0.1 + i * 0.08, ease: EASE }}
-                className="block"
-              >
-                {word}
-              </motion.span>
-            ))}
+          {/* Teljesen fehér, masszív tipográfia */}
+          {/* Teljesen fehér, masszív tipográfia - átengedve a kattintásokat */}
+          <h1 className="flex flex-col items-center justify-center text-center font-black uppercase leading-[0.82] tracking-[-0.03em] text-[clamp(4rem,13vw,12rem)] pointer-events-none select-none drop-shadow-2xl">
+            <motion.span
+              initial={{ opacity: 0, y: '60%' }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.9, delay: 0.1, ease: EASE }}
+              className="block text-white"
+            >
+              We Think
+            </motion.span>
+            
+            <motion.span
+              initial={{ opacity: 0, y: '60%' }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.9, delay: 0.18, ease: EASE }}
+              className="block text-white"
+            >
+              Craft And
+            </motion.span>
+            
             <motion.span
               initial={{ opacity: 0, y: '60%' }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, delay: 0.26, ease: EASE }}
-              className="block bg-gradient-to-r from-[#be2133] via-[#ff3b4e] to-[#be2133] bg-clip-text text-transparent"
+              className="block text-white"
             >
-              dominance
+              Design
             </motion.span>
           </h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4, ease: EASE }}
-            className="mx-auto mt-8 max-w-xl text-pretty text-lg text-white/65 md:text-xl"
-          >
-            We don&apos;t build standard websites. We architect premium digital
-            ecosystems that turn attention into revenue.
-          </motion.p>
 
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.5, ease: EASE }}
-            className="mt-11 flex flex-col items-center gap-3 sm:flex-row"
+            // Megnövelt térköz fentre (mt-20)
+            className="mt-20 flex flex-col items-center gap-3 sm:flex-row pointer-events-auto"
           >
             <MagneticButton
               href="/book"
-              className="group flex items-center gap-2.5 rounded-lg bg-[#be2133] px-7 py-3.5 text-base font-semibold text-white transition-shadow hover:shadow-[0_0_34px_-6px_#be2133]"
+              className="group flex items-center gap-2.5 rounded-lg bg-[#be2133] px-7 py-3.5 text-base font-semibold text-white transition-colors hover:bg-[#a61c2c]"
             >
               Initiate project
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </MagneticButton>
             <MagneticButton
-              href="/references"
+              href="/blog"
               className="flex items-center gap-2.5 rounded-lg bg-white/[0.06] px-7 py-3.5 text-base font-semibold text-white backdrop-blur-md transition-colors hover:bg-white/15"
             >
               View our work
@@ -1026,29 +1269,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Services ─────────────────────────────────────────── */}
-      <section className="pb-32">
-        <div className={CONTAINER}>
-          <Reveal className="mb-14 flex flex-col justify-between gap-6 md:flex-row md:items-end">
-            <h2 className="text-balance text-4xl font-bold tracking-tight md:text-6xl">
-              Everything you need.
-              <br className="hidden md:block" /> Nothing you don&apos;t.
-            </h2>
-            <p className="max-w-sm text-pretty text-white/55 md:text-right">
-              We operate at the intersection of stunning aesthetics and ruthless
-              performance.
-            </p>
-          </Reveal>
-
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-12">
-            {SERVICES.map((srv, i) => (
-              <ServiceCard key={srv.id} srv={srv} index={i} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Work (Stacked Effect) ────────────────────────────── */}
+      {/* ── Work (2x2 Grid) ────────────────────────────── */}
       <section className="bg-[#0a0a0a] pt-32 pb-24 relative">
         <div className={CONTAINER}>
           <Reveal className="mb-20">
@@ -1057,9 +1278,9 @@ export default function HomePage() {
             </h2>
           </Reveal>
 
-          {/* Egymásra csúszó kártyák konténere */}
-          <div className="flex flex-col relative w-full">
-            {caseStudies.map((cs, i) => (
+          {/* 2x2 rács, soronként két kártya, összesen négy */}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
+            {caseStudies.slice(0, 4).map((cs, i) => (
               <StackedWorkCard key={cs.slug} cs={cs} index={i} />
             ))}
           </div>
@@ -1074,6 +1295,14 @@ export default function HomePage() {
               <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
             </MagneticButton>
           </Reveal>
+        </div>
+      </section>
+
+      {/* ── Services (Simple Grid) ─────────────────────────── */}
+      {/* ── Services (Interactive Typography List) ───────────────────── */}
+      <section className="py-32 bg-[#070707] overflow-hidden">
+        <div className={CONTAINER}>
+          <InteractiveServiceList />
         </div>
       </section>
 
@@ -1163,9 +1392,9 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-[#be2133] py-36">
-        {/* lighting + depth */}
+      {/* ── CTA & FOOTER (MERGED) ────────────────────────────── */}
+      <section className="relative flex min-h-[75vh] flex-col justify-between overflow-hidden rounded-t-[2.5rem] bg-[#be2133] pt-36 md:rounded-t-[3.5rem]">
+        {/* Háttér effektek és világítás */}
         <div className="pointer-events-none absolute inset-0">
           <motion.div
             animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }}
@@ -1180,7 +1409,8 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/30" />
         </div>
 
-        <div className={`${CONTAINER} relative z-10 text-center`}>
+        {/* A CTA szöveges tartalma */}
+        <div className={`${CONTAINER} relative z-10 flex flex-1 flex-col items-center justify-center text-center pb-24`}>
           <Reveal delay={0.05}>
             <h2 className="text-balance text-[clamp(3rem,10vw,9rem)] font-black uppercase leading-[0.85] tracking-tight text-white">
               Stop blending in.
@@ -1195,7 +1425,6 @@ export default function HomePage() {
           <Reveal delay={0.2}>
             <MagneticButton
               href="/book"
-              strength={0.5}
               className="group mt-12 inline-flex items-center gap-3 rounded-lg bg-white px-10 py-5 text-base font-bold uppercase tracking-[0.1em] text-[#be2133] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] transition-transform hover:scale-[1.03]"
             >
               Book a call
@@ -1203,9 +1432,12 @@ export default function HomePage() {
             </MagneticButton>
           </Reveal>
         </div>
-      </section>
 
-      <Footer />
-    </div>
+        {/* A megújult, egyszerűsített Footer közvetlenül a CTA hátterén belül kap helyet */}
+        <Footer />
+      </section>
+        </div>
+      </SmoothScroll>
+    </CustomCursorProvider>
   )
 }

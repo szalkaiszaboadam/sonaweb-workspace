@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { PortalShell } from '@/components/portal-shell'
+import { Preloader } from '@/components/Preloader' // ÚJ: A Preloader importálása
 import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
@@ -23,6 +24,7 @@ export const viewport: Viewport = {
   themeColor: '#1a0d0d',
 }
 
+// app/layout.tsx (részlet)
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -33,7 +35,9 @@ export default function RootLayout({
       lang="en"
       className={`dark ${geistSans.variable} ${geistMono.variable} bg-background`}
     >
-      <body className="font-sans antialiased">
+      {/* JAVÍTÁS: overflow-x-hidden hozzáadása */}
+      <body className="font-sans antialiased overflow-x-hidden">
+        <Preloader />
         <TooltipProvider delayDuration={150}>
           <PortalShell>{children}</PortalShell>
         </TooltipProvider>
