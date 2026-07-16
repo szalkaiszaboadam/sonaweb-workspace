@@ -1,0 +1,2 @@
+NEXT_PUBLIC_SUPABASE_URL=https://a-te-projekted-url-cime.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=a-te-hosszu-publishable-anon-kulcsod

@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  /* A Tailwind utility class-okat rákötjük a CSS változóinkra */
+  --color-background: var(--bg);
+  --color-surface: var(--surface);
+  --color-foreground: var(--text);
+  --color-border: var(--border-color);
+  
+  /* A fix színeid, amik nem változnak a témával */
+  --color-primary: #BF2234;
+  --color-primary-hover: #9c1c2a;
+  --color-sona-neutral: #9E9A98;
+}
+
+@layer base {
+  /* VILÁGOS MÓD SZÍNEI */
+  :root {
+    --bg: #F4F2F0; /* A te világos háttered */
+    --surface: #ffffff; /* Fehér kártyák világos módban, hogy kiemelkedjenek */
+    --text: #111827; /* Sötét szöveg */
+    --border-color: rgba(158, 154, 152, 0.3); /* Sona neutral 30% */
+  }
+
+  /* SÖTÉT MÓD SZÍNEI */
+  .dark {
+    --bg: #0A0A0A; /* A te sötét háttered */
+    --surface: #141414; /* A te sötét kártya háttered */
+    --text: #f3f4f6; /* Világos szöveg */
+    --border-color: rgba(158, 154, 152, 0.15); /* Halványabb szegély sötétben */
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+  }
+}
