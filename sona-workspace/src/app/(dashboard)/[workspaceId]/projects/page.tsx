@@ -2,7 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CreateProjectModal } from './components/CreateProjectModal' 
 import { ProjectActions } from './components/ProjectActions'
+import { ProjectStatusBadge } from './components/ProjectStatusBadge'
 import { FolderKanban, Clock } from 'lucide-react'
+import Link from 'next/link'
 
 type Props = {
   params: Promise<{ workspaceId: string }>
@@ -61,18 +63,25 @@ export default async function ProjectsPage(props: Props) {
                   <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
                     <FolderKanban className="w-5 h-5" />
                   </div>
-                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                    Folyamatban
-                  </span>
+                  
+                  {/* IDE KERÜLT AZ ÚJ KOMPONENS */}
+                  <ProjectStatusBadge 
+                    projectId={project.id} 
+                    currentStatus={project.status} 
+                  />
+                  
                 </div>
                 
-                {/* Itt van az új szerkesztő/törlő menü */}
+                {/* Itt van a szerkesztő/törlő menü */}
                 <ProjectActions project={project} />
               </div>
               
-              <h3 className="text-lg font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">
+              <Link 
+                href={`/${workspaceId}/projects/${project.id}`}
+                className="text-lg font-semibold text-foreground mb-1 hover:text-primary transition-colors inline-block"
+              >
                 {project.name}
-              </h3>
+              </Link>
               
               {project.client_name && (
                 <p className="text-xs font-medium text-sona-neutral mb-3 uppercase tracking-wider">

@@ -89,3 +89,134 @@ export async function deleteProject(projectId: string) {
 
   return { success: true }
 }
+
+// PROJEKT STÁTUSZ FRISSÍTÉSE
+export async function updateProjectStatus(projectId: string, status: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const { error } = await supabase
+    .from('projects')
+    .update({ status })
+    .eq('id', projectId)
+    .eq('user_id', user.id)
+
+  if (error) {
+    console.error("Hiba a státusz frissítésekor:", error.message)
+    return { error: 'Hiba történt a módosítás során.' }
+  }
+
+  return { success: true }
+}
+
+// --- FELADATOK (TASKS) ACTIONS ---
+
+// 1. Gyors feladat létrehozása (Trello stílus: csak cím és státusz)
+export async function createTask(
+  workspaceId: string, 
+  projectId: string, 
+  title: string, 
+  status: string
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+  if (!title || title.trim() === '') return { error: 'A feladat neve kötelező.' }
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({
+      workspace_id: workspaceId,
+      project_id: projectId,
+      title: title.trim(),
+      status: status,
+      user_id: user.id
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Hiba a feladat létrehozásakor:", error.message)
+    return { error: 'Nem sikerült létrehozni a feladatot.' }
+  }
+
+  return { success: true, task: data }
+}
+
+// 2. Feladat státuszának (oszlopának) frissítése
+export async function updateTaskStatus(taskId: string, newStatus: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const { error } = await supabase
+    .from('tasks')
+    .update({ status: newStatus })
+    .eq('id', taskId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: 'Nem sikerült frissíteni a feladatot.' }
+  return { success: true }
+}
+
+// 3. Feladat részleteinek frissítése (határidő, becsült idő, leírás)
+export async function updateTaskDetails(taskId: string, updates: any) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const { error } = await supabase
+    .from('tasks')
+    .update(updates)
+    .eq('id', taskId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: 'Nem sikerült menteni a részleteket.' }
+  return { success: true }
+}
+
+// FELADATOK SORRENDJÉNEK ÉS STÁTUSZÁNAK TÖMEGES FRISSÍTÉSE
+export async function updateTaskOrders(updates: { id: string; status: string; position: number }[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  // Mivel több kártyát frissítünk egyszerre, Promise.all-t használunk a gyorsaságért
+  const promises = updates.map(update =>
+    supabase
+      .from('tasks')
+      .update({ status: update.status, position: update.position })
+      .eq('id', update.id)
+      .eq('user_id', user.id)
+  )
+
+  try {
+    await Promise.all(promises)
+    return { success: true }
+  } catch (error) {
+    console.error("Hiba a sorrend mentésekor:", error)
+    return { error: 'Nem sikerült menteni a sorrendet.' }
+  }
+}
+
+// FELADAT TÖRLÉSE
+export async function deleteTask(taskId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const { error } = await supabase
+    .from('tasks')
+    .delete()
+    .eq('id', taskId)
+    .eq('user_id', user.id)
+
+  if (error) {
+    console.error("Hiba a feladat törlésekor:", error.message)
+    return { error: 'Nem sikerült törölni a feladatot.' }
+  }
+
+  return { success: true }
+}

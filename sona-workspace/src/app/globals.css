@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme {
   /* A Tailwind utility class-okat rákötjük a CSS változóinkra */
