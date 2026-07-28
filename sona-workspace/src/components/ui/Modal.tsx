@@ -3,14 +3,16 @@
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
 
-interface ModalProps {
+type ModalProps = {
   isOpen: boolean
   onClose: () => void
-  title: string
+  title?: string
   children: React.ReactNode
+  className?: string
 }
 
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+// 1. ITT VESSZÜK ÁT A className PARAMÉTERT:
+export function Modal({ isOpen, onClose, title, children, className }: ModalProps) {
   // Esc gombra bezáródik az ablak
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -30,8 +32,8 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         onClick={onClose}
       />
       
-      {/* Modal doboz */}
-      <div className="relative bg-surface w-full max-w-md rounded-xl shadow-lg border border-border p-6 m-4 animate-in fade-in zoom-in-95 duration-200">
+      {/* 2. ITT HASZNÁLJUK FEL A className-t a max-w-md HELYETT! */}
+      <div className={`relative bg-surface w-full rounded-xl shadow-lg border border-border p-6 m-4 animate-in fade-in zoom-in-95 duration-200 ${className || 'max-w-md'}`}>
         <div className="flex justify-between items-center mb-5">
           <h2 className="text-xl font-semibold text-foreground">{title}</h2>
           <button 

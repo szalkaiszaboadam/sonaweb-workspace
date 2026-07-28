@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, CheckSquare, FolderKanban, FileText, Settings, ChevronLeft, ChevronRight, ChevronsUpDown, Check } from 'lucide-react'
-
+import { LayoutDashboard, Users, CheckSquare, FolderKanban, FileText, Settings, ChevronLeft, ChevronRight, ChevronsUpDown, Check, HardDrive } from 'lucide-react'
 type Workspace = { id: string, name: string }
 
 export function WorkspaceSidebar({ 
@@ -23,12 +22,13 @@ export function WorkspaceSidebar({
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false)
 
-  const navItems = [
-    // ITT JAVÍTVA: dashboard -> overview
+const navItems = [
     { name: 'Áttekintés', href: `/${currentWorkspaceId}/overview`, icon: LayoutDashboard },
     { name: 'Projektek', href: `/${currentWorkspaceId}/projects`, icon: FolderKanban },
     { name: 'Feladatok', href: `/${currentWorkspaceId}/tasks`, icon: CheckSquare },
     { name: 'Dokumentumok', href: `/${currentWorkspaceId}/docs`, icon: FileText },
+    // Ezt az egy sort szúrtuk be ide:
+    { name: 'Fájlok', href: `/${currentWorkspaceId}/files`, icon: HardDrive }, 
     { name: 'Csapat', href: `/${currentWorkspaceId}/team`, icon: Users },
     { name: 'Beállítások', href: `/${currentWorkspaceId}/settings`, icon: Settings },
   ]

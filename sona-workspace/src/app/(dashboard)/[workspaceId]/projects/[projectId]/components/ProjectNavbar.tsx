@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { HardDrive } from 'lucide-react'
 
 export function ProjectNavbar({ workspaceId, projectId }: { workspaceId: string, projectId: string }) {
   const pathname = usePathname()
@@ -11,6 +12,7 @@ export function ProjectNavbar({ workspaceId, projectId }: { workspaceId: string,
     { name: 'Áttekintés', href: baseUrl, exact: true },
     { name: 'Feladatok', href: `${baseUrl}/tasks`, exact: false },
     { name: 'Dokumentumok', href: `${baseUrl}/docs`, exact: false },
+    { name: 'Fájlok', href: `${baseUrl}/files`, exact: false }, // <-- Ezt az egy sort adtuk hozzá
     { name: 'Beállítások', href: `${baseUrl}/settings`, exact: false },
   ]
 

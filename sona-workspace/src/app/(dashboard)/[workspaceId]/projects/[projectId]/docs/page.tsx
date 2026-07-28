@@ -1,27 +1,27 @@
+// A generált fájl tartalma (src/app/(dashboard)/[workspaceId]/projects/[projectId]/docs/page.tsx)
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { getTasks } from '../actions'
-import { TaskManager } from '../components/TaskManager'
+import { getDocuments } from '../../actions'
+import { DocumentManager } from '../../components/DocumentManager'
 
-export default async function ProjectPage({
+export default async function DocsPage({
   params
 }: {
   params: Promise<{ workspaceId: string; projectId: string }>
 }) {
   const resolvedParams = await params
-  const { workspaceId, projectId } = resolvedParams
-
+  const { projectId } = resolvedParams
+  
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const tasksResult = await getTasks(projectId)
+  const docsResult = await getDocuments(projectId)
 
   return (
     <div className="pt-4 h-full">
-      <TaskManager 
-        initialTasks={tasksResult.tasks || []} 
-        workspaceId={workspaceId} 
+      <DocumentManager 
+        initialDocuments={docsResult.documents || []} 
         projectId={projectId} 
       />
     </div>
