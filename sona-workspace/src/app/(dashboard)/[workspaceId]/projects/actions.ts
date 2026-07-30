@@ -299,6 +299,29 @@ export async function deleteDocument(documentId: string) {
   return { success: true }
 }
 
+// DOKUMENTUMOK SORRENDJÉNEK ÉS MAPPÁJÁNAK TÖMEGES MENTÉSE (DRAG & DROP)
+export async function updateDocumentOrders(updates: { id: string; folder_name: string; position: number }[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const promises = updates.map(update =>
+    supabase
+      .from('documents')
+      .update({ folder_name: update.folder_name, position: update.position })
+      .eq('id', update.id)
+      .eq('user_id', user.id)
+  )
+
+  try {
+    await Promise.all(promises)
+    return { success: true }
+  } catch (error) {
+    console.error("Hiba a doksik sorrendjének mentésekor:", error)
+    return { error: 'Nem sikerült menteni a sorrendet.' }
+  }
+}
+
 // FELADATOK LEKÉRDEZÉSE
 export async function getTasks(projectId: string) {
   const supabase = await createClient()
@@ -590,3 +613,93 @@ export async function getWorkspaceMembers(workspaceId: string) {
   return { members: formattedMembers }
 }
 
+// ==========================================
+//           IDŐKÖVETÉS (TIME TRACKING)
+// ==========================================
+
+export async function getTimeEntries(projectId: string) {
+  const supabase = await createClient()
+  
+  // A Supabase JOIN-nal egyből lehozzuk a feladat nevét is (tasks(title))
+  const { data, error } = await supabase
+    .from('time_entries')
+    .select(`
+      *,
+      tasks ( title )
+    `)
+    .eq('project_id', projectId)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error("Hiba az időbejegyzések lekérésekor:", error.message || error)
+    return { entries: [] }
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const formattedEntries = data.map(entry => ({
+    ...entry,
+    user_email: user && entry.user_id === user.id ? user.email : `Kolléga (${entry.user_id.substring(0, 4)})`,
+    // Kibontjuk a feladat nevét a frontendnek
+    task_title: entry.tasks?.title || null 
+  }))
+
+  return { entries: formattedEntries }
+}
+
+export async function addTimeEntry(
+  workspaceId: string, 
+  projectId: string, 
+  description: string, 
+  date: string, 
+  durationMinutes: number,
+  taskId: string | null = null // <-- ÚJ PARAMÉTER: taskId
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  if (durationMinutes <= 0) return { error: 'Az időtartamnak nagyobbnak kell lennie 0-nál.' }
+  if (!description.trim()) return { error: 'A leírás kötelező.' }
+
+  const { error } = await supabase
+    .from('time_entries')
+    .insert([{
+      workspace_id: workspaceId,
+      project_id: projectId,
+      user_id: user.id,
+      description,
+      date,
+      duration_minutes: durationMinutes,
+      task_id: taskId // <-- ELMENTJÜK A FELADATOT IS
+    }])
+
+  if (error) {
+    console.error("Hiba az idő mentésekor:", error)
+    return { error: 'Nem sikerült elmenteni az időt.' }
+  }
+
+  return { success: true }
+}
+
+
+export async function deleteTimeEntry(entryId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const { error } = await supabase
+    .from('time_entries')
+    .delete()
+    .eq('id', entryId)
+    // Megengedjük, hogy a sajátját törölje (egy komolyabb rendszernél az admin mindent törölhet, 
+    // de egyelőre a biztonság kedvéért rögzítjük a user_id-hez)
+    .eq('user_id', user.id) 
+
+  if (error) {
+    return { error: 'Nem sikerült törölni a bejegyzést (Lehet, hogy nem a tiéd).' }
+  }
+
+  return { success: true }
+}

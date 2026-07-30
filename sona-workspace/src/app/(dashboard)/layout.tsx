@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { UserMenu } from '@/components/layout/UserMenu'
+import { FloatingTimer } from '@/components/ui/FloatingTimer'
 
 export default async function DashboardLayout({
   children,
@@ -34,6 +35,8 @@ export default async function DashboardLayout({
       <main className="flex-1 bg-background flex overflow-hidden">
         {children}
       </main>
+
+      <FloatingTimer />
     </div>
   )
 }
