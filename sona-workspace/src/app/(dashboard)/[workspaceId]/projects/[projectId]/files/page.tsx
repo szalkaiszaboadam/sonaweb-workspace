@@ -16,9 +16,9 @@ export default async function ProjectFilesPage({
 
   const { files } = await getProjectFiles(resolvedParams.projectId)
 
-  return (
-    <div className="pt-4 h-full">
-      <FilesView files={files} title="Projekt Fájlok" />
-    </div>
-  )
+return (
+  <div className="h-full">
+    <FilesView files={files} title="Projekt Fájlok" />
+  </div>
+)
 }

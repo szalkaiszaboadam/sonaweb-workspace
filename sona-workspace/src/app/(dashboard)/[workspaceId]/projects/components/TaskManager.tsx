@@ -504,10 +504,11 @@ export function TaskManager({ initialTasks, workspaceId, projectId }: Props) {
         )
       })()}
 
-            {/* Ide kerül a Részletek ablak */}
+{/* Ide kerül a Részletek ablak */}
             <TaskModal
                 task={selectedTask}
                 isOpen={isModalOpen}
+                workspaceId={workspaceId} 
                 onClose={() => {
                     setIsModalOpen(false)
                     setTimeout(() => setSelectedTask(null), 200) // Kicsit várunk a bezárási animációra

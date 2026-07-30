@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { ProjectStatusBadge } from '../components/ProjectStatusBadge'
-import { ProjectNavbar } from './components/ProjectNavbar'
+import { ProjectNavbar } from '../components/ProjectNavbar'
 
 export default async function ProjectLayout({
   children,
@@ -28,10 +28,10 @@ export default async function ProjectLayout({
   if (!project) redirect(`/${workspaceId}/projects`)
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto w-full flex flex-col h-full">
+    <div className="w-full flex flex-col h-full"> 
       
       {/* Vissza gomb */}
-      <div className="mb-6">
+      <div className="mb-4">
         <Link 
           href={`/${workspaceId}/projects`}
           className="inline-flex items-center text-sm font-medium text-sona-neutral hover:text-foreground transition-colors"
@@ -53,8 +53,8 @@ export default async function ProjectLayout({
       {/* A Belső Navigációs Menü (Fülek) */}
       <ProjectNavbar workspaceId={workspaceId} projectId={projectId} />
 
-      {/* Dinamikus Tartalom (Itt jelenik meg az Áttekintés vagy a Feladatok) */}
-      <div className="flex-1">
+      {/* Dinamikus Tartalom (Ami a fülek alatt cserélődik) */}
+      <div className="flex-1 mt-2">
         {children}
       </div>
 

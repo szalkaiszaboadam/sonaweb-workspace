@@ -11,7 +11,7 @@ export function ProjectNavbar({ workspaceId, projectId }: { workspaceId: string,
   const navItems = [
     { name: 'Áttekintés', href: baseUrl, exact: true },
     { name: 'Feladatok', href: `${baseUrl}/tasks`, exact: false },
-    { name: 'Dokumentumok', href: `${baseUrl}/docs`, exact: false },
+    { name: 'Dokumentumok', href: `${baseUrl}/documents`, exact: false },
     { name: 'Fájlok', href: `${baseUrl}/files`, exact: false }, // <-- Ezt az egy sort adtuk hozzá
     { name: 'Beállítások', href: `${baseUrl}/settings`, exact: false },
   ]

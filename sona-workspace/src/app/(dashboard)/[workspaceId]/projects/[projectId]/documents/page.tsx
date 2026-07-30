@@ -18,12 +18,9 @@ export default async function DocsPage({
 
   const docsResult = await getDocuments(projectId)
 
-  return (
-    <div className="pt-4 h-full">
-      <DocumentManager 
-        initialDocuments={docsResult.documents || []} 
-        projectId={projectId} 
-      />
-    </div>
-  )
+return (
+  <div className="h-full">
+    <DocumentManager initialDocuments={docsResult.documents || []} projectId={projectId} />
+  </div>
+)
 }

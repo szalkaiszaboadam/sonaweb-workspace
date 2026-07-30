@@ -241,15 +241,16 @@ if (error) {
   return { documents: data }
 }
 
-// Új dokumentum létrehozása
-export async function createDocument(projectId: string, title: string) {
+// Új dokumentum létrehozása (Mappával)
+export async function createDocument(projectId: string, title: string, folderName: string = 'Általános') {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
   const { data, error } = await supabase
     .from('documents')
-    .insert([{ project_id: projectId, user_id: user.id, title, content: '' }])
+    // ITT A VÁLTOZÁS: Beletesszük a folder_name-et is a mentésbe!
+    .insert([{ project_id: projectId, user_id: user.id, title, content: '', folder_name: folderName }])
     .select()
     .single()
 
@@ -260,8 +261,8 @@ export async function createDocument(projectId: string, title: string) {
   return { document: data }
 }
 
-// Dokumentum frissítése (cím vagy tartalom)
-export async function updateDocument(documentId: string, updates: { title?: string; content?: string }) {
+// Dokumentum frissítése (cím, tartalom, VAGY MAPPA)
+export async function updateDocument(documentId: string, updates: { title?: string; content?: string; folder_name?: string }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
@@ -330,9 +331,10 @@ export async function getComments(targetType: 'task' | 'document', targetId: str
   const supabase = await createClient()
   const column = targetType === 'task' ? 'task_id' : 'document_id'
   
+  // 1. TÖRLÖLTÜK A JOIN-T: Csak a kommenteket kérjük le, hogy a Supabase ne blokkolja!
   const { data, error } = await supabase
     .from('comments')
-    .select('*, user:user_id(email)') // Lekérjük a kommentelő email címét is!
+    .select('*') 
     .eq(column, targetId)
     .order('created_at', { ascending: true })
 
@@ -340,7 +342,20 @@ export async function getComments(targetType: 'task' | 'document', targetId: str
     console.error("Hiba a kommentek betöltésekor:", error)
     return { comments: [] }
   }
-  return { comments: data }
+
+  // 2. Lekérjük az aktuális usert, hogy a saját e-mailünket ki tudjuk írni
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // 3. Összeállítjuk a frontendnek a megfelelő formátumot
+  const formattedComments = data.map(c => ({
+    ...c,
+    user: {
+      // Ha ez a te kommented, kiírjuk az e-mailedet, ha másé, egyelőre egy azonosítót kap.
+      email: user && c.user_id === user.id ? user.email : `Kolléga (${c.user_id.substring(0,4)})`
+    }
+  }))
+
+  return { comments: formattedComments }
 }
 
 export async function addComment(targetType: 'task' | 'document', targetId: string, content: string) {
@@ -350,14 +365,26 @@ export async function addComment(targetType: 'task' | 'document', targetId: stri
 
   const column = targetType === 'task' ? 'task_id' : 'document_id'
 
+  // 1. TÖRLÖLTÜK A JOIN-T a .select() belsejéből!
   const { data, error } = await supabase
     .from('comments')
     .insert([{ [column]: targetId, user_id: user.id, content }])
-    .select('*, user:user_id(email)')
+    .select() // <--- Sima select, nincs auth.users hivatkozás
     .single()
 
-  if (error) return { error: 'Hiba a kommenteléskor.' }
-  return { comment: data }
+  if (error) {
+    console.error("Hiba a komment mentésekor:", error)
+    return { error: 'Hiba a kommenteléskor.' }
+  }
+
+  // 2. Mivel mi magunk küldtük a kommentet, pontosan tudjuk a saját e-mailünket! 
+  // Hozzácsatoljuk az objektumhoz, mielőtt visszaküldjük a felületnek.
+  const commentWithUser = {
+    ...data,
+    user: { email: user.email }
+  }
+
+  return { comment: commentWithUser }
 }
 
 export async function deleteComment(id: string) {
@@ -529,3 +556,37 @@ export async function getWorkspaceFiles(workspaceId: string) {
   if (error) console.error("Hiba a workspace fájlok lekérésekor:", error)
   return { files: data || [] }
 }
+
+export async function getWorkspaceMembers(workspaceId: string) {
+  const supabase = await createClient()
+  
+  // 1. Lekérjük az aktuális bejelentkezett felhasználót (hogy tudjuk, ki az az "Én")
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+
+  // 2. Meghívjuk az új SQL függvényünket (RPC = Remote Procedure Call)
+  const { data: members, error } = await supabase
+    .rpc('get_workspace_users', { ws_id: workspaceId })
+
+  if (error || !members) {
+    console.error("Hiba a tagok lekérésekor:", error)
+    return { members: [] }
+  }
+
+  // 3. Formázzuk a listát
+  const formattedMembers = members.map((m: any) => {
+    let emailText = m.email || "Ismeretlen e-mail"
+    
+    // Ha ez a bejelentkezett felhasználó, tegyük mellé, hogy "(Én)"
+    if (currentUser && m.user_id === currentUser.id) {
+      emailText = `${m.email} (Én)`
+    }
+
+    return {
+      user_id: m.user_id,
+      email: emailText,
+    }
+  })
+
+  return { members: formattedMembers }
+}
+

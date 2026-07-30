@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Paperclip, X, Download, File as FileIcon, Loader2 } from 'lucide-react'
+// ÚJ IKONOK BEIMPORTÁLVA: Plus, Trash2
+import { Paperclip, Plus, Trash2, X, Download, File as FileIcon, Loader2 } from 'lucide-react'
 import { getAttachments, deleteAttachment, uploadAttachment } from '../actions'
 import { Button } from '@/components/ui/Button'
 
@@ -71,58 +72,91 @@ export function AttachmentSection({ targetType, targetId }: { targetType: 'task'
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
+  // 1. ESET: NINCSENEK FÁJLOK (TELJESEN REJTETT NÉZET)
+  if (attachments.length === 0) {
+    return (
+      // A felületen semmi sem látszik, de a rejtett input itt csücsül a háttérben, 
+      // így a TaskModal "Hozzáadás..." menüje tudja használni (JavaScript .click()-el)!
+      <div className="hidden">
+        <input
+          type="file"
+          id={`file-upload-${targetId}`}
+          onChange={handleFileChange} 
+          disabled={isUploading}
+          ref={fileInputRef}
+        />
+      </div>
+    )
+  }
+
+  // 2. ESET: VANNAK FÁJLOK (MEGJELENIK A SZEKCIÓ)
   return (
-    <div className="flex flex-col gap-4 mt-6">
+    <div className="flex flex-col gap-4 animate-in fade-in duration-300">
+      
+      {/* Fejléc */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Paperclip className="w-4 h-4 text-sona-neutral" /> Csatolmányok
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Paperclip className="w-5 h-5 text-sona-neutral" /> Csatolmányok
         </h3>
         
-        <input 
-          type="file" 
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden" 
-        />
-        <Button 
-          type="button" 
-          variant="secondary" 
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-          className="text-xs py-1.5 px-3 h-auto"
-        >
-          {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Új fájl'}
-        </Button>
+        {/* Feltöltő gomb - Rejtett inputtal */}
+        <div className="relative">
+          <input
+            type="file"
+            id={`file-upload-${targetId}`}
+            className="hidden"
+            onChange={handleFileChange}
+            disabled={isUploading}
+            ref={fileInputRef}
+          />
+          <label
+            htmlFor={`file-upload-${targetId}`}
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors ${
+              isUploading 
+                ? 'bg-sona-neutral/20 text-sona-neutral cursor-not-allowed' 
+                : 'bg-primary/10 text-primary hover:bg-primary/20'
+            }`}
+          >
+            <Plus className="w-4 h-4" />
+            {isUploading ? 'Feltöltés...' : 'Új fájl'}
+          </label>
+        </div>
       </div>
 
+      {/* Fájlok rácsa */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {attachments.length === 0 && !isUploading && (
-          <p className="text-xs text-sona-neutral italic col-span-full">Nincsenek csatolt fájlok.</p>
-        )}
-        
         {attachments.map((file) => (
-          <div key={file.id} className="flex items-center justify-between p-2.5 bg-background border border-border rounded-lg group">
+          <div 
+            key={file.id} 
+            className="group relative flex items-center justify-between p-3 bg-surface border border-border rounded-xl hover:border-primary/50 transition-colors"
+          >
             <a 
               href={file.file_url} 
               target="_blank" 
-              rel="noreferrer"
-              className="flex items-center gap-3 overflow-hidden flex-1 hover:opacity-80 transition-opacity"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 flex-1 min-w-0"
             >
-              <div className="p-2 bg-sona-neutral/10 rounded-md text-primary shrink-0">
-                <FileIcon className="w-4 h-4" />
+              <div className="p-2 bg-sona-neutral/10 rounded-lg shrink-0">
+                <Paperclip className="w-4 h-4 text-foreground" />
               </div>
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-xs font-medium text-foreground truncate">{file.file_name}</span>
-                <span className="text-[10px] text-sona-neutral">{formatSize(file.file_size)}</span>
+              
+              {/* ITT VAN A JAVÍTOTT, TÖBBSOROS FÁJLNÉV! */}
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-sm font-medium text-foreground break-all line-clamp-2 whitespace-normal leading-tight">
+                  {file.file_name}
+                </span>
+                <span className="text-xs text-sona-neutral mt-0.5">
+                  {formatSize(file.file_size)}
+                </span>
               </div>
             </a>
-            
-            <button 
+
+            <button
               onClick={() => handleDelete(file.id, file.file_url)}
-              className="p-1.5 ml-2 rounded text-sona-neutral hover:bg-red-500/10 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-              title="Törlés"
+              className="p-2 text-sona-neutral hover:text-red-500 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all shrink-0 ml-2"
+              title="Fájl törlése"
             >
-              <X className="w-4 h-4" />
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         ))}
