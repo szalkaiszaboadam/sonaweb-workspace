@@ -1,12 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CreateProjectModal } from './components/CreateProjectModal' 
-import { ProjectActions } from './components/ProjectActions'
-import { ProjectStatusBadge } from './components/ProjectStatusBadge'
-import { FolderKanban, Clock } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import Link from 'next/link'
+import { getProjectIcon, getProjectColor } from '@/lib/project-icons'
 
 export const dynamic = 'force-dynamic'
+
+// Ugyanaz a stílus-szótár, amit a belső layoutban is használunk a tökéletes konzisztenciáért!
+const STATUS_MAP = {
+  planning: { label: 'Tervezés alatt', class: 'bg-slate-500/10 text-slate-500 border-slate-500/20' },
+  in_progress: { label: 'Folyamatban', class: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
+  on_hold: { label: 'Felfüggesztve', class: 'bg-orange-500/10 text-orange-500 border-orange-500/20' },
+  completed: { label: 'Befejezett', class: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' },
+}
 
 type Props = {
   params: Promise<{ workspaceId: string }>
@@ -22,13 +29,8 @@ export default async function ProjectsPage(props: Props) {
   const { data: workspace } = await supabase.from('workspaces').select('*').eq('id', workspaceId).single()
   if (!workspace) redirect('/workspaces')
 
-  const { data: memberData } = await supabase.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', user.id).single()
-  const isWorkspaceOwner = memberData?.role === 'owner'
-
-  // ÚJ: Lekérjük a tagokat és csoportokat a Modal számára
   const { data: workspaceMembersData } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
   const { data: workspaceGroups } = await supabase.from('workspace_groups').select('*').eq('workspace_id', workspaceId)
-
   const { data: projects } = await supabase.from('projects').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false })
 
   return (
@@ -42,7 +44,6 @@ export default async function ProjectsPage(props: Props) {
           </p>
         </div>
         
-        {/* ITT ADJUK ÁT AZ ADATOKAT A MODALNAK */}
         <CreateProjectModal 
           workspaceId={workspace.id} 
           workspaceMembers={workspaceMembersData || []}
@@ -54,25 +55,29 @@ export default async function ProjectsPage(props: Props) {
       {projects && projects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((project) => {
-            const isManager = isWorkspaceOwner || project.user_id === user.id
+            const Icon = getProjectIcon(project.emoji)
+            const colorTheme = getProjectColor(project.color)
+            const statusConfig = STATUS_MAP[project.status as keyof typeof STATUS_MAP] || STATUS_MAP.planning
 
             return (
-              <div key={project.id} className="bg-surface border border-border rounded-xl p-6 hover:shadow-md transition-shadow group relative flex flex-col">
+              <div key={project.id} className="bg-surface border border-border rounded-xl p-6 hover:shadow-md hover:border-primary/50 transition-all group relative flex flex-col">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
-                      <FolderKanban className="w-5 h-5" />
+                    <div className={`p-2.5 rounded-lg flex items-center justify-center w-11 h-11 shadow-sm ${colorTheme.bg} ${colorTheme.text}`}>
+                      <Icon className="w-6 h-6" strokeWidth={2} />
                     </div>
-                    <ProjectStatusBadge projectId={project.id} workspaceId={workspaceId} currentStatus={project.status} />
+                    
+                    {/* STATIKUS, OLVASHATÓ STÁTUSZ JELZŐ */}
+                    <div className={`px-2.5 py-1 rounded-md text-[10px] font-bold border uppercase tracking-wider ${statusConfig.class}`}>
+                      {statusConfig.label}
+                    </div>
+
                   </div>
-                  <ProjectActions project={project} isManager={isManager} />
                 </div>
                 
-                <Link href={`/${workspaceId}/projects/${project.id}`} className="text-lg font-semibold text-foreground mb-3 hover:text-primary transition-colors inline-block">
+                <Link href={`/${workspaceId}/projects/${project.id}`} className="text-lg font-semibold text-foreground mb-3 hover:text-primary transition-colors inline-block before:absolute before:inset-0 before:z-0">
                   {project.name}
                 </Link>
-                
-                {/* ÜGYFÉL NÉV TÖRÖLVE INNEN */}
                 
                 <p className="text-sm text-sona-neutral line-clamp-2 flex-1 mb-6">
                   {project.description || 'Nincs megadva leírás.'}
@@ -89,7 +94,7 @@ export default async function ProjectsPage(props: Props) {
       ) : (
         <div className="w-full flex flex-col items-center justify-center p-12 bg-surface/50 border border-border border-dashed rounded-2xl text-center">
           <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-            <FolderKanban className="w-8 h-8 text-primary" />
+            <Clock className="w-8 h-8 text-primary" />
           </div>
           <h3 className="text-lg font-medium text-foreground mb-2">Nincsenek még projektek</h3>
           <p className="text-sona-neutral text-sm max-w-sm mb-6">

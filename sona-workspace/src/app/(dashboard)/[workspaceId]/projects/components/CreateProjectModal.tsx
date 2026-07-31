@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Plus, Globe2, Lock, Users } from 'lucide-react'
 import { createProject } from '../actions' 
+import { PROJECT_ICONS, PROJECT_COLORS } from '@/lib/project-icons'
 
 type Props = {
   workspaceId: string
@@ -21,10 +22,11 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Új állapotok a meghívásokhoz
   const [isPrivate, setIsPrivate] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
+const [selectedEmoji, setSelectedEmoji] = useState('folder')
+const [selectedColor, setSelectedColor] = useState('primary')
 
   const toggleMember = (id: string) => setSelectedMembers(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id])
   const toggleGroup = (id: string) => setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
@@ -36,10 +38,10 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
     
     const formData = new FormData(e.currentTarget)
     formData.append('is_private', isPrivate ? 'true' : 'false')
-    
-    // A tömböket JSON formátumban küldjük át a szervernek
     formData.append('member_ids', JSON.stringify(selectedMembers))
     formData.append('group_ids', JSON.stringify(selectedGroups))
+    formData.append('emoji', selectedEmoji)
+    formData.append('color', selectedColor)
     
     const result = await createProject(formData)
 
@@ -47,10 +49,9 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
       setError(result.error)
       setIsLoading(false)
     } else {
-      setIsOpen(false)
-      setIsLoading(false)
-      // Visszaállítjuk az alapállapotokat a következő létrehozáshoz
+      setIsOpen(false); setIsLoading(false)
       setIsPrivate(false); setSelectedMembers([]); setSelectedGroups([])
+      setSelectedEmoji('📁'); setSelectedColor('primary')
     }
   }
 
@@ -61,17 +62,44 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
       </Button>
 
       <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Új projekt létrehozása">
-        {/* max-h és overflow hozzáadva, mert ez a modal hosszabb is lehet */}
         <div className="max-h-[75vh] overflow-y-auto px-1 pb-1">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5 pt-2">
-            
             <input type="hidden" name="workspace_id" value={workspaceId} />
 
-            <div className="flex flex-col gap-4">
-              <Input label="Projekt neve *" id="name" name="name" placeholder="Pl.: Sonaweb Redesign" required autoFocus />
-              
-              {/* ÜGYFÉL NÉV INPUT TÖRÖLVE INNEN IS */}
+            {/* IKON ÉS SZÍN VÁLASZTÓ */}
+<div className="flex flex-col gap-3">
+  <label className="text-sm font-medium text-foreground">Projekt ikon és szín</label>
+  
+  <div className="flex flex-wrap gap-2">
+    {PROJECT_ICONS.map(item => {
+      const Icon = item.icon
+      return (
+        <button 
+          type="button" 
+          key={item.id} 
+          onClick={() => setSelectedEmoji(item.id)} 
+          className={`w-10 h-10 flex items-center justify-center rounded-lg border-2 transition-all ${selectedEmoji === item.id ? 'border-primary bg-primary/10 text-primary' : 'border-transparent bg-sona-neutral/10 text-sona-neutral hover:bg-sona-neutral/20'}`}
+        >
+          <Icon className="w-5 h-5" />
+        </button>
+      )
+    })}
+  </div>
 
+  <div className="flex flex-wrap gap-2 mt-2">
+    {PROJECT_COLORS.map(c => (
+      <button 
+        type="button" 
+        key={c.id} 
+        onClick={() => setSelectedColor(c.id)} 
+        className={`w-8 h-8 rounded-full border-2 transition-all ${c.bg} ${selectedColor === c.id ? c.border : 'border-transparent'}`} 
+      />
+    ))}
+  </div>
+</div>
+
+            <div className="flex flex-col gap-4 border-t border-border pt-4">
+              <Input label="Projekt neve *" id="name" name="name" placeholder="Pl.: Sonaweb Redesign" required autoFocus />
               <div className="flex flex-col gap-1.5 w-full">
                 <label htmlFor="description" className="text-sm font-medium text-foreground">Leírás (opcionális)</label>
                 <textarea id="description" name="description" rows={3} className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all text-foreground resize-none" placeholder="Rövid leírás a projektről..." />
@@ -79,7 +107,7 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
             </div>
 
             {/* LÁTHATÓSÁGI KAPCSOLÓK */}
-            <div className="flex flex-col gap-2 pt-2 border-t border-border">
+            <div className="flex flex-col gap-2 pt-4 border-t border-border">
               <label className="text-sm font-medium text-foreground">Projekt láthatósága</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div onClick={() => setIsPrivate(false)} className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${!isPrivate ? 'border-primary bg-primary/5' : 'border-border bg-background hover:border-primary/50'}`}>
@@ -99,13 +127,12 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
               </div>
             </div>
 
-            {/* MEGHÍVÓ MENÜ (Ha privát) */}
+            {/* MEGHÍVÓ MENÜ */}
             {isPrivate && (
               <div className="flex flex-col gap-4 pt-4 border-t border-border animate-in fade-in duration-300">
                 <h3 className="font-semibold text-foreground text-sm flex items-center gap-2">
                   <Users className="w-4 h-4 text-sona-neutral" /> Kiket hívsz meg?
                 </h3>
-                
                 <div className="flex flex-col gap-4">
                   {workspaceGroups.length > 0 && (
                     <div className="flex flex-col gap-2">
@@ -115,9 +142,7 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
                         return (
                           <div key={group.id} className="flex items-center justify-between p-2.5 bg-sona-neutral/5 border border-border rounded-lg">
                             <span className="text-sm font-medium text-foreground">{group.name}</span>
-                            <button type="button" onClick={() => toggleGroup(group.id)} className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${isAdded ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}`}>
-                              {isAdded ? 'Eltávolítás' : 'Hozzáadás'}
-                            </button>
+                            <button type="button" onClick={() => toggleGroup(group.id)} className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${isAdded ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}`}>{isAdded ? 'Eltávolítás' : 'Hozzáadás'}</button>
                           </div>
                         )
                       })}
@@ -134,15 +159,10 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
                             <span className="text-sm font-medium text-foreground">{member.name || 'Ismeretlen'}</span>
                             <span className="text-[11px] text-sona-neutral">{member.email}</span>
                           </div>
-                          <button type="button" onClick={() => toggleMember(member.user_id)} className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${isAdded ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}`}>
-                            {isAdded ? 'Eltávolítás' : 'Hozzáadás'}
-                          </button>
+                          <button type="button" onClick={() => toggleMember(member.user_id)} className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${isAdded ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}`}>{isAdded ? 'Eltávolítás' : 'Hozzáadás'}</button>
                         </div>
                       )
                     })}
-                    {workspaceMembers.filter(m => m.user_id !== currentUserId).length === 0 && (
-                      <p className="text-xs text-sona-neutral italic">Nincsenek más tagok a munkatérben.</p>
-                    )}
                   </div>
                 </div>
               </div>

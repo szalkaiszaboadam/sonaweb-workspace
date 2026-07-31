@@ -27,26 +27,20 @@ export async function createProject(formData: FormData) {
   const description = formData.get('description') as string
   const workspace_id = formData.get('workspace_id') as string 
   const is_private = formData.get('is_private') === 'true'
+  const emoji = formData.get('emoji') as string || '📁'
+  const color = formData.get('color') as string || 'primary'
   
-  // ÚJ: Kinyerjük a JSON-ből a meghívottakat
   const memberIds = JSON.parse((formData.get('member_ids') as string) || '[]')
   const groupIds = JSON.parse((formData.get('group_ids') as string) || '[]')
 
   if (!name || name.trim() === '') return { error: 'A projekt nevének megadása kötelező.' }
 
-  // 1. Projekt létrehozása (ügyfél név nélkül)
   const { data: project, error } = await supabase.from('projects').insert({
-    name, 
-    description, 
-    workspace_id, 
-    user_id: user.id, 
-    is_private,
-    status: 'planning' 
+    name, description, workspace_id, user_id: user.id, is_private, emoji, color, status: 'planning' 
   }).select().single()
 
   if (error || !project) return { error: 'Hiba történt a létrehozás során.' }
   
-  // 2. Ha privát, azonnal rögzítjük a meghívottakat!
   if (is_private) {
     if (memberIds.length > 0) {
       const membersToInsert = memberIds.map((id: string) => ({ project_id: project.id, user_id: id }))
@@ -58,7 +52,7 @@ export async function createProject(formData: FormData) {
     }
   }
 
-  revalidatePath('/', 'layout')
+  revalidatePath('/', 'layout') // <--- CACHE TÖRLÉSE!
   return { success: true }
 }
 
@@ -72,35 +66,22 @@ export async function updateProject(formData: FormData) {
   const name = formData.get('name') as string
   const description = formData.get('description') as string
   const is_private = formData.get('is_private') === 'true'
+  const status = formData.get('status') as string
+  const emoji = formData.get('emoji') as string || '📁'
+  const color = formData.get('color') as string || 'primary'
 
   if (!name || name.trim() === '') return { error: 'A projekt nevének megadása kötelező.' }
 
   const isManager = await verifyProjectManager(supabase, workspace_id, id, user.id)
   if (!isManager) return { error: 'Nincs jogosultságod módosítani ezt a projektet!' }
 
-  // Frissítés (ügyfél név nélkül)
-  const { error } = await supabase
-    .from('projects')
-    .update({ name, description, is_private })
-    .eq('id', id)
+  const { error } = await supabase.from('projects').update({ 
+    name, description, is_private, status, emoji, color 
+  }).eq('id', id)
 
   if (error) return { error: 'Hiba történt a módosítás során.' }
-  revalidatePath('/', 'layout')
-  return { success: true }
-}
-
-export async function deleteProject(projectId: string, workspaceId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Nincs jogosultságod.' }
-
-  // KŐKEMÉNY VÉDELEM
-  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
-  if (!isManager) return { error: 'Nincs jogosultságod törölni ezt a projektet!' }
-
-  const { error } = await supabase.from('projects').delete().eq('id', projectId)
-  if (error) return { error: 'Hiba történt a törlés során.' }
-  revalidatePath(`/${workspaceId}/projects`, 'layout')
+  
+  revalidatePath('/', 'layout') // <--- CACHE TÖRLÉSE!
   return { success: true }
 }
 
@@ -114,7 +95,52 @@ export async function updateProjectStatus(projectId: string, workspaceId: string
 
   const { error } = await supabase.from('projects').update({ status }).eq('id', projectId)
   if (error) return { error: 'Hiba történt a módosítás során.' }
-  revalidatePath(`/${workspaceId}/projects`, 'layout')
+  
+  revalidatePath('/', 'layout') // <--- JAVÍTVA: EZ MIATT NEM FRISSÜLT A FELÜLET EDDIG!
+  return { success: true }
+}
+
+export async function deleteProject(projectId: string, workspaceId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
+  if (!isManager) return { error: 'Nincs jogosultságod törölni ezt a projektet!' }
+
+  // 1. Kikeressük a projekt ÖSSZES feladatát és dokumentumát
+  const [{ data: tasks }, { data: docs }] = await Promise.all([
+    supabase.from('tasks').select('id').eq('project_id', projectId),
+    supabase.from('documents').select('id').eq('project_id', projectId)
+  ])
+
+  const taskIds = tasks?.map(t => t.id) || []
+  const docIds = docs?.map(d => d.id) || []
+
+  const orQuery = []
+  if (taskIds.length > 0) orQuery.push(`task_id.in.(${taskIds.join(',')})`)
+  if (docIds.length > 0) orQuery.push(`document_id.in.(${docIds.join(',')})`)
+
+  // 2. Ha volt bennük valami, lekérjük az összes hozzájuk tartozó csatolt fájlt
+  if (orQuery.length > 0) {
+    const { data: attachments } = await supabase
+      .from('attachments')
+      .select('file_url')
+      .or(orQuery.join(','))
+
+    if (attachments && attachments.length > 0) {
+      // Fizikailag megsemmisítjük a projekt összes feltöltött fájlját
+      const filesToRemove = attachments.map(a => a.file_url.split('/').pop() as string)
+      await supabase.storage.from('project_files').remove(filesToRemove)
+    }
+  }
+
+  // 3. Jöhet a projekt törlése (Az SQL kaszkád innentől mindent eltakarít az adatbázisban)
+  const { error } = await supabase.from('projects').delete().eq('id', projectId)
+  
+  if (error) return { error: 'Hiba történt a törlés során.' }
+  
+  revalidatePath('/', 'layout')
   return { success: true }
 }
 
@@ -256,17 +282,20 @@ export async function deleteTask(taskId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const { error } = await supabase
-    .from('tasks')
-    .delete()
-    .eq('id', taskId)
-    .eq('user_id', user.id)
-
-  if (error) {
-    console.error("Hiba a feladat törlésekor:", error.message)
-    return { error: 'Nem sikerült törölni a feladatot.' }
+  // 1. Megkeressük a feladathoz tartozó fájlokat
+  const { data: attachments } = await supabase.from('attachments').select('file_url').eq('task_id', taskId)
+  
+  if (attachments && attachments.length > 0) {
+    // Kinyerjük a fájlneveket az URL-ek végéről
+    const filesToRemove = attachments.map(a => a.file_url.split('/').pop() as string)
+    // Fizikailag töröljük őket a Storage-ból
+    await supabase.storage.from('project_files').remove(filesToRemove)
   }
 
+  // 2. Töröljük a feladatot (és a fenti SQL miatt viszi a kommenteket és a csatolmány hivatkozásokat is)
+  const { error } = await supabase.from('tasks').delete().eq('id', taskId).eq('user_id', user.id)
+
+  if (error) return { error: 'Nem sikerült törölni a feladatot.' }
   return { success: true }
 }
 
@@ -335,16 +364,18 @@ export async function deleteDocument(documentId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const { error } = await supabase
-    .from('documents')
-    .delete()
-    .eq('id', documentId)
-    .eq('user_id', user.id)
-
-  if (error) {
-    console.error("Hiba a dokumentum törlésekor:", error)
-    return { error: 'Nem sikerült törölni a dokumentumot.' }
+  // 1. Megkeressük a dokumentumhoz tartozó fájlokat
+  const { data: attachments } = await supabase.from('attachments').select('file_url').eq('document_id', documentId)
+  
+  if (attachments && attachments.length > 0) {
+    const filesToRemove = attachments.map(a => a.file_url.split('/').pop() as string)
+    await supabase.storage.from('project_files').remove(filesToRemove)
   }
+
+  // 2. Töröljük magát a dokumentumot
+  const { error } = await supabase.from('documents').delete().eq('id', documentId).eq('user_id', user.id)
+
+  if (error) return { error: 'Nem sikerült törölni a dokumentumot.' }
   return { success: true }
 }
 
