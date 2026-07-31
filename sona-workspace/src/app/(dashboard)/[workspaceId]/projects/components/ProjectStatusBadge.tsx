@@ -28,24 +28,25 @@ const STATUS_CONFIG = {
 // Kinyerjük a megengedett státuszokat
 type StatusType = keyof typeof STATUS_CONFIG
 
-export function ProjectStatusBadge({ projectId, currentStatus }: { projectId: string, currentStatus: string }) {
+// A paraméterek közé bekerül a workspaceId!
+export function ProjectStatusBadge({ projectId, workspaceId, currentStatus }: { projectId: string, workspaceId: string, currentStatus: string }) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
 
-  // Biztosítjuk, hogy a státusz létezik a szótárban (ha esetleg üres lenne, legyen 'in_progress' az alap)
   const statusKey = (Object.keys(STATUS_CONFIG).includes(currentStatus) ? currentStatus : 'in_progress') as StatusType
   const config = STATUS_CONFIG[statusKey]
 
   const handleStatusChange = async (newStatus: StatusType) => {
     setIsOpen(false)
-    if (newStatus === statusKey) return // Ha ugyanarra kattint, nem csinálunk semmit
+    if (newStatus === statusKey) return 
 
     setIsUpdating(true)
-    const result = await updateProjectStatus(projectId, newStatus)
+    // ITT A JAVÍTÁS: Átadjuk a workspaceId-t is a szervernek!
+    const result = await updateProjectStatus(projectId, workspaceId, newStatus)
     
     if (!result?.error) {
-      router.refresh() // Újratöltjük az adatokat, hogy a felület frissüljön
+      router.refresh() 
     }
     setIsUpdating(false)
   }

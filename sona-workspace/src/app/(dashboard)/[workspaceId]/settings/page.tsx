@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import { RenameWorkspaceForm } from './components/RenameWorkspaceForm'
 import { DeleteWorkspaceButton } from './components/DeleteWorkspaceButton'
 import { Settings, AlertTriangle } from 'lucide-react'
@@ -10,6 +11,24 @@ export default async function SettingsPage({
 }) {
   const { workspaceId } = await params
   const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  // --- KÖTELEZŐ VÉDELEM: SZEREPKÖR LEKÉRÉSE ---
+  const { data: memberData } = await supabase
+    .from('workspace_members')
+    .select('role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user.id)
+    .single()
+
+  // Ha a felhasználó NEM tulajdonos (hanem pl. tag), AZONNAL kidobjuk!
+  // Meg sem várjuk, hogy a return (...) rész betöltődjön.
+  if (memberData?.role !== 'owner') {
+    redirect(`/${workspaceId}`) 
+  }
+  // --- VÉDELEM VÉGE ---
 
   // Lekérjük a munkaterület jelenlegi nevét
   const { data: workspace } = await supabase

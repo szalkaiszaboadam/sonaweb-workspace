@@ -5,18 +5,19 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, CheckSquare, FileText, HardDrive, Settings, Timer, ChevronDown, Check } from 'lucide-react'
 
-export function ProjectNavbar({ workspaceId, projectId }: { workspaceId: string, projectId: string }) {
+export function ProjectNavbar({ workspaceId, projectId, isManager }: { workspaceId: string, projectId: string, isManager: boolean }) {
   const pathname = usePathname()
   const baseUrl = `/${workspaceId}/projects/${projectId}`
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  const navItems = [
+const navItems = [
     { name: 'Áttekintés', href: baseUrl, exact: true, icon: LayoutDashboard },
     { name: 'Feladatok', href: `${baseUrl}/tasks`, exact: false, icon: CheckSquare },
     { name: 'Dokumentumok', href: `${baseUrl}/documents`, exact: false, icon: FileText },
     { name: 'Fájlok', href: `${baseUrl}/files`, exact: false, icon: HardDrive },
     { name: 'Időkövetés', href: `${baseUrl}/time`, exact: false, icon: Timer },
-    { name: 'Beállítások', href: `${baseUrl}/settings`, exact: false, icon: Settings },
+    // CSAK AKKOR LÁTJA, HA JOGOSULT RÁ:
+    ...(isManager ? [{ name: 'Beállítások', href: `${baseUrl}/settings`, exact: false, icon: Settings }] : []),
   ]
 
   const activeItem = navItems.find(item => item.exact ? pathname === item.href : pathname.includes(item.href)) || navItems[0]

@@ -55,12 +55,6 @@ export default async function ProjectOverviewPage({
             <h2 className="text-lg font-semibold flex items-center gap-2 text-foreground">
               <AlignLeft className="w-5 h-5 text-sona-neutral" /> Projekt leírása
             </h2>
-            {project.client_name && (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-sona-neutral bg-sona-neutral/10 px-2.5 py-1 rounded-md border border-border/50">
-                <Building2 className="w-3.5 h-3.5" />
-                {project.client_name}
-              </div>
-            )}
           </div>
           <div className="h-px bg-border w-full" />
           {project.description ? (

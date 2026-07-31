@@ -27,6 +27,19 @@ export default async function ProjectLayout({
 
   if (!project) redirect(`/${workspaceId}/projects`)
 
+  // 1. ÚJ: Lekérjük a felhasználó szerepkörét a munkatérben
+  const { data: memberData } = await supabase
+    .from('workspace_members')
+    .select('role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user.id)
+    .single()
+    
+  const isWorkspaceOwner = memberData?.role === 'owner'
+  
+  // 2. ÚJ: Kiszámoljuk, hogy ő-e a menedzser (Munkatér tulajdonos VAGY ő hozta létre a projektet)
+  const isManager = isWorkspaceOwner || project.user_id === user.id
+
   return (
     <div className="w-full flex flex-col h-full"> 
       
@@ -45,13 +58,15 @@ export default async function ProjectLayout({
       <div className="flex items-center gap-3 mb-6">
         <h1 className="text-3xl font-bold text-foreground">{project.name}</h1>
         <ProjectStatusBadge 
-          projectId={project.id} 
+          projectId={project.id}
+          workspaceId={workspaceId} 
           currentStatus={project.status} 
         />
       </div>
 
       {/* A Belső Navigációs Menü (Fülek) */}
-      <ProjectNavbar workspaceId={workspaceId} projectId={projectId} />
+      {/* 3. ÚJ: Átadjuk az isManager értéket a Navbarnak! */}
+      <ProjectNavbar workspaceId={workspaceId} projectId={projectId} isManager={isManager} />
 
       {/* Dinamikus Tartalom (Ami a fülek alatt cserélődik) */}
       <div className="flex-1 mt-2">

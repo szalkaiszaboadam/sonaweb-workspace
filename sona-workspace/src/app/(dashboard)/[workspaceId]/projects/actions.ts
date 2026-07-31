@@ -1,115 +1,164 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
 
+// ==========================================
+// SEGÉDFÜGGVÉNY: JOGOSULTSÁG ELLENŐRZÉSE
+// (Megnézi, hogy a user Workspace Owner-e, VAGY ő hozta-e létre a projektet)
+// ==========================================
+async function verifyProjectManager(supabase: any, workspaceId: string, projectId: string, userId: string) {
+  const { data: project } = await supabase.from('projects').select('user_id').eq('id', projectId).single()
+  if (project?.user_id === userId) return true // Ő a projekt tulajdonosa!
+
+  const { data: member } = await supabase.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', userId).single()
+  return member?.role === 'owner' // Vagy ő a teljes munkatér tulajdonosa!
+}
+
+// ==========================================
+// PROJEKTEK KEZELÉSE
+// ==========================================
 export async function createProject(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
 
-  if (!user) {
-    return { error: 'Nincs jogosultságod.' }
-  }
-
-  // Adatok kinyerése
   const name = formData.get('name') as string
   const description = formData.get('description') as string
-  const client_name = formData.get('client_name') as string
-  
-  // A rejtett mezőből kapjuk meg a workspace azonosítóját
   const workspace_id = formData.get('workspace_id') as string 
+  const is_private = formData.get('is_private') === 'true'
+  
+  // ÚJ: Kinyerjük a JSON-ből a meghívottakat
+  const memberIds = JSON.parse((formData.get('member_ids') as string) || '[]')
+  const groupIds = JSON.parse((formData.get('group_ids') as string) || '[]')
 
-  if (!name || name.trim() === '') {
-    return { error: 'A projekt nevének megadása kötelező.' }
+  if (!name || name.trim() === '') return { error: 'A projekt nevének megadása kötelező.' }
+
+  // 1. Projekt létrehozása (ügyfél név nélkül)
+  const { data: project, error } = await supabase.from('projects').insert({
+    name, 
+    description, 
+    workspace_id, 
+    user_id: user.id, 
+    is_private,
+    status: 'planning' 
+  }).select().single()
+
+  if (error || !project) return { error: 'Hiba történt a létrehozás során.' }
+  
+  // 2. Ha privát, azonnal rögzítjük a meghívottakat!
+  if (is_private) {
+    if (memberIds.length > 0) {
+      const membersToInsert = memberIds.map((id: string) => ({ project_id: project.id, user_id: id }))
+      await supabase.from('project_members').insert(membersToInsert)
+    }
+    if (groupIds.length > 0) {
+      const groupsToInsert = groupIds.map((id: string) => ({ project_id: project.id, group_id: id }))
+      await supabase.from('project_groups').insert(groupsToInsert)
+    }
   }
 
-  // Beszúrás az adatbázisba
-  const { error } = await supabase.from('projects').insert({
-    name,
-    description,
-    client_name,
-    workspace_id,
-    user_id: user.id
-  })
-
-  if (error) {
-    console.error("Hiba a projekt létrehozásakor:", error.message)
-    return { error: 'Hiba történt a létrehozás során.' }
-  }
-
+  revalidatePath('/', 'layout')
   return { success: true }
 }
 
-// PROJEKT FRISSÍTÉSE
 export async function updateProject(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) return { error: 'Nincs jogosultságod.' }
 
   const id = formData.get('id') as string
+  const workspace_id = formData.get('workspace_id') as string
   const name = formData.get('name') as string
   const description = formData.get('description') as string
-  const client_name = formData.get('client_name') as string
+  const is_private = formData.get('is_private') === 'true'
 
-  if (!name || name.trim() === '') {
-    return { error: 'A projekt nevének megadása kötelező.' }
-  }
+  if (!name || name.trim() === '') return { error: 'A projekt nevének megadása kötelező.' }
 
+  const isManager = await verifyProjectManager(supabase, workspace_id, id, user.id)
+  if (!isManager) return { error: 'Nincs jogosultságod módosítani ezt a projektet!' }
+
+  // Frissítés (ügyfél név nélkül)
   const { error } = await supabase
     .from('projects')
-    .update({ name, description, client_name })
+    .update({ name, description, is_private })
     .eq('id', id)
-    .eq('user_id', user.id) // Biztonság: csak a sajátját módosíthatja!
 
-  if (error) {
-    console.error("Hiba a frissítéskor:", error.message)
-    return { error: 'Hiba történt a módosítás során.' }
-  }
-
+  if (error) return { error: 'Hiba történt a módosítás során.' }
+  revalidatePath('/', 'layout')
   return { success: true }
 }
 
-// PROJEKT TÖRLÉSE
-export async function deleteProject(projectId: string) {
+export async function deleteProject(projectId: string, workspaceId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const { error } = await supabase
-    .from('projects')
-    .delete()
-    .eq('id', projectId)
-    .eq('user_id', user.id)
+  // KŐKEMÉNY VÉDELEM
+  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
+  if (!isManager) return { error: 'Nincs jogosultságod törölni ezt a projektet!' }
 
-  if (error) {
-    console.error("Hiba a törléskor:", error.message)
-    return { error: 'Hiba történt a törlés során.' }
-  }
-
+  const { error } = await supabase.from('projects').delete().eq('id', projectId)
+  if (error) return { error: 'Hiba történt a törlés során.' }
+  revalidatePath(`/${workspaceId}/projects`, 'layout')
   return { success: true }
 }
 
-// PROJEKT STÁTUSZ FRISSÍTÉSE
-export async function updateProjectStatus(projectId: string, status: string) {
+export async function updateProjectStatus(projectId: string, workspaceId: string, status: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const { error } = await supabase
-    .from('projects')
-    .update({ status })
-    .eq('id', projectId)
-    .eq('user_id', user.id)
+  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
+  if (!isManager) return { error: 'Csak a projektvezető válthat státuszt!' }
 
-  if (error) {
-    console.error("Hiba a státusz frissítésekor:", error.message)
-    return { error: 'Hiba történt a módosítás során.' }
-  }
-
+  const { error } = await supabase.from('projects').update({ status }).eq('id', projectId)
+  if (error) return { error: 'Hiba történt a módosítás során.' }
+  revalidatePath(`/${workspaceId}/projects`, 'layout')
   return { success: true }
 }
+
+// ==========================================
+// ÚJ: PRIVÁT PROJEKT HOZZÁFÉRÉSEK KEZELÉSE
+// ==========================================
+export async function toggleProjectMember(projectId: string, workspaceId: string, targetUserId: string, isMember: boolean) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs bejelentkezve.' }
+
+  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
+  if (!isManager) return { error: 'Nincs jogosultságod tagokat kezelni!' }
+
+  if (isMember) {
+    const { error } = await supabase.from('project_members').insert({ project_id: projectId, user_id: targetUserId })
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await supabase.from('project_members').delete().eq('project_id', projectId).eq('user_id', targetUserId)
+    if (error) return { error: error.message }
+  }
+  return { success: true }
+}
+
+export async function toggleProjectGroup(projectId: string, workspaceId: string, groupId: string, isGroupAdded: boolean) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs bejelentkezve.' }
+
+  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
+  if (!isManager) return { error: 'Nincs jogosultságod csoportokat kezelni!' }
+
+  if (isGroupAdded) {
+    const { error } = await supabase.from('project_groups').insert({ project_id: projectId, group_id: groupId })
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await supabase.from('project_groups').delete().eq('project_id', projectId).eq('group_id', groupId)
+    if (error) return { error: error.message }
+  }
+  return { success: true }
+}
+
+// --- FELADATOK (TASKS) ACTIONS ---
+// (Innen folytatódik a régi kódod a createTask-al, ami szépen megmarad!)
 
 // --- FELADATOK (TASKS) ACTIONS ---
 

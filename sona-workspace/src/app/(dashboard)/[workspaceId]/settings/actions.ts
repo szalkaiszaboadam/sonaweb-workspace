@@ -13,12 +13,13 @@ export async function updateWorkspaceName(workspaceId: string, newName: string) 
   // Jogosultság ellenőrzése (csak Tulajdonos módosíthatja)
   const { data: membership } = await supabase
     .from('workspace_members')
-    .select('is_owner')
+    .select('role') // <-- ITT JAVÍTVA (is_owner helyett role)
     .eq('workspace_id', workspaceId)
     .eq('user_id', user.id)
     .single()
 
-  if (!membership?.is_owner) {
+  // <-- ITT JAVÍTVA (Ellenőrizzük, hogy 'owner' a szerepköre)
+  if (membership?.role !== 'owner') {
     return { error: 'Csak a munkaterület tulajdonosa módosíthatja a beállításokat.' }
   }
 
@@ -49,12 +50,13 @@ export async function deleteWorkspace(workspaceId: string) {
   // Ellenőrizzük, hogy tényleg ő-e a tulajdonos
   const { data: membership } = await supabase
     .from('workspace_members')
-    .select('is_owner')
+    .select('role') // <-- ITT JAVÍTVA
     .eq('workspace_id', workspaceId)
     .eq('user_id', user.id)
     .single()
 
-  if (!membership?.is_owner) {
+  // <-- ITT JAVÍTVA
+  if (membership?.role !== 'owner') {
     return { error: 'Csak a tulajdonos törölheti a munkaterületet.' }
   }
 
