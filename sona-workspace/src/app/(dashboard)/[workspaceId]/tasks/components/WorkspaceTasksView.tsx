@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Calendar, Clock, Flag, FolderKanban, CheckCircle2, Circle, User as UserIcon } from 'lucide-react'
 import { TaskModal, type Task } from '../../projects/components/TaskModal'
+import { Avatar } from '@/components/ui/Avatar'
 
 // Kiterjesztjük a Task típust a projekt nevével (amit a Supabase JOIN hozott le)
 type WorkspaceTask = Task & { 
@@ -12,7 +13,7 @@ type WorkspaceTask = Task & {
 
 type Props = {
   initialTasks: WorkspaceTask[]
-  members: { id: string, email: string, name: string }[]
+  members: { id: string, email: string, name: string, avatar_url?: string }[]
   workspaceId: string
   currentUserId: string
 }
@@ -162,14 +163,17 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
                         )}
 
                         {/* Felelős (Avatar) */}
-                        <div className="flex items-center gap-2 w-32 justify-end" title={getAssigneeName(task.assignee_id)}>
-                          <span className="text-xs font-medium text-sona-neutral truncate hidden lg:block">
-                            {getAssigneeName(task.assignee_id)}
-                          </span>
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${task.assignee_id ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-sona-neutral/10 text-sona-neutral border border-border border-dashed'}`}>
-                            {task.assignee_id ? getAssigneeName(task.assignee_id).charAt(0).toUpperCase() : <UserIcon className="w-3.5 h-3.5"/>}
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-2 w-32 justify-end" title={getAssigneeName(task.assignee_id)}>
+                        <span className="text-xs font-medium text-sona-neutral truncate hidden lg:block">
+                          {getAssigneeName(task.assignee_id)}
+                        </span>
+                        <Avatar 
+                          name={getAssigneeName(task.assignee_id)} 
+                          url={members.find(m => m.id === task.assignee_id)?.avatar_url}
+                          className="w-7 h-7 text-[10px]"
+                          fallbackClass={task.assignee_id ? 'bg-primary/10 text-primary border-primary/20' : 'bg-sona-neutral/10 text-sona-neutral border-border border-dashed'}
+                        />
+                      </div>
 
                       </div>
                     </div>

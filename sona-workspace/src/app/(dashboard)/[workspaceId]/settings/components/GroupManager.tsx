@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import { Plus, Users, Settings2, Trash2, X, AlertTriangle } from 'lucide-react'
-import { createGroup, deleteGroup, toggleGroupMember } from '../actions'
+import { createGroup, deleteGroup, toggleGroupMember } from '../../team/actions'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { Avatar } from '@/components/ui/Avatar'
 
-type Member = { id: string; email: string; name: string; role: string }
+type Member = { id: string; email: string; name: string; role: string; avatar_url?: string }
 type Group = { id: string; name: string; memberIds: string[] }
 
 type Props = {
@@ -20,7 +21,7 @@ type Props = {
 export function GroupManager({ workspaceId, members, groups, currentUserRole }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
   // Modálok állapotai
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
@@ -30,14 +31,14 @@ export function GroupManager({ workspaceId, members, groups, currentUserRole }: 
     e.preventDefault()
     setIsLoading(true)
     setError(null)
-    
+
     const formData = new FormData(e.currentTarget)
     const name = formData.get('name') as string
 
     const result = await createGroup(workspaceId, name)
     if (result.error) setError(result.error)
     else setIsCreateModalOpen(false)
-    
+
     setIsLoading(false)
   }
 
@@ -61,15 +62,22 @@ export function GroupManager({ workspaceId, members, groups, currentUserRole }: 
   const editingGroup = groups.find(g => g.id === editingGroupId)
 
   return (
-    <div className="flex flex-col gap-4">
-      
-      {/* FEJLÉC */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-foreground">Munkacsoportok</h2>
+    <div className="flex flex-col gap-6 pt-6"> {/* Kisebb extra térköz felül */}
+
+      {/* LETISZTULT FEJLÉC ÉS KIS GOMB */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">Munkacsoportok</h2>
+          <p className="text-sm text-sona-neutral mt-1">Rendezd a tagokat funkcionális csoportokba.</p>
+        </div>
         {currentUserRole === 'owner' && (
-          <Button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 text-sm">
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            // Ez is megkapta az elegáns piros stílust!
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors shadow-sm shrink-0"
+          >
             <Plus className="w-4 h-4" /> Új csoport
-          </Button>
+          </button>
         )}
       </div>
 
@@ -79,25 +87,28 @@ export function GroupManager({ workspaceId, members, groups, currentUserRole }: 
         </div>
       )}
 
-      {/* RÁCSOS LISTA (Bento stílusú kártyák) */}
+      {/* RÁCSOS LISTA */}
       {groups.length === 0 ? (
-        <div className="bg-surface border border-dashed border-border rounded-xl p-8 text-center flex flex-col items-center">
-          <Users className="w-8 h-8 text-sona-neutral/50 mb-3" />
-          <p className="text-sm text-sona-neutral">Nincsenek még létrehozott csoportok.</p>
+        <div className="border border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center bg-surface/30">
+          <div className="w-12 h-12 rounded-full bg-sona-neutral/10 flex items-center justify-center mb-3">
+            <Users className="w-6 h-6 text-sona-neutral" />
+          </div>
+          <p className="text-sm font-medium text-foreground">Nincsenek még csoportok</p>
+          <p className="text-xs text-sona-neutral mt-1">Hozz létre egyet a tagok rendszerezéséhez.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {groups.map(group => {
             const groupMembers = members.filter(m => group.memberIds.includes(m.id))
-            
+
             return (
-              <div key={group.id} className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow">
-                
+              <div key={group.id} className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow group relative">
+
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-semibold text-foreground truncate">{group.name}</h3>
                   {currentUserRole === 'owner' && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setEditingGroupId(group.id)} className="p-1.5 text-sona-neutral hover:text-primary hover:bg-primary/10 rounded-md transition-colors">
+                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 shrink-0">
+                      <button onClick={() => setEditingGroupId(group.id)} className="p-1.5 text-sona-neutral hover:text-foreground hover:bg-sona-neutral/10 rounded-md transition-colors">
                         <Settings2 className="w-4 h-4" />
                       </button>
                       <button onClick={() => handleDeleteGroup(group.id)} className="p-1.5 text-sona-neutral hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors">
@@ -107,24 +118,26 @@ export function GroupManager({ workspaceId, members, groups, currentUserRole }: 
                   )}
                 </div>
 
-                {/* AVATÁROK MEGJELENÍTÉSE */}
                 <div>
-                  <div className="text-xs text-sona-neutral mb-2 font-medium uppercase tracking-wider">
+                  <div className="text-[10px] text-sona-neutral mb-2 font-bold uppercase tracking-wider">
                     {groupMembers.length} Tag
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1">
                     {groupMembers.length === 0 ? (
                       <span className="text-xs text-sona-neutral/70 italic">Nincsenek tagok</span>
                     ) : (
                       groupMembers.map(member => (
-                        <div key={member.id} title={member.name} className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xs font-bold shadow-sm">
-                          {member.name.charAt(0).toUpperCase()}
+                        <div key={member.id} title={member.name}>
+                          <Avatar
+                            name={member.name}
+                            url={member.avatar_url}
+                            className="w-7 h-7 text-xs shadow-sm ring-2 ring-background"
+                          />
                         </div>
                       ))
                     )}
                   </div>
                 </div>
-                
               </div>
             )
           })}
@@ -161,9 +174,8 @@ export function GroupManager({ workspaceId, members, groups, currentUserRole }: 
                 <button
                   disabled={isLoading}
                   onClick={() => editingGroupId && handleToggleMember(editingGroupId, member.id, isMember)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 ${
-                    isMember ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-primary/10 text-primary hover:bg-primary/20'
-                  }`}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 ${isMember ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-primary/10 text-primary hover:bg-primary/20'
+                    }`}
                 >
                   {isMember ? 'Eltávolítás' : 'Hozzáadás'}
                 </button>

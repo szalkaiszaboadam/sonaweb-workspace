@@ -433,30 +433,40 @@ export async function getTasks(projectId: string) {
 export async function getComments(targetType: 'task' | 'document', targetId: string) {
   const supabase = await createClient()
   const column = targetType === 'task' ? 'task_id' : 'document_id'
-  
-  // 1. TÖRLÖLTÜK A JOIN-T: Csak a kommenteket kérjük le, hogy a Supabase ne blokkolja!
-  const { data, error } = await supabase
-    .from('comments')
-    .select('*') 
-    .eq(column, targetId)
-    .order('created_at', { ascending: true })
 
-  if (error) {
-    console.error("Hiba a kommentek betöltésekor:", error)
-    return { comments: [] }
-  }
+  const { data, error } = await supabase.from('comments').select('*').eq(column, targetId).order('created_at', { ascending: true })
+  if (error) return { comments: [] }
 
-  // 2. Lekérjük az aktuális usert, hogy a saját e-mailünket ki tudjuk írni
   const { data: { user } } = await supabase.auth.getUser()
 
-  // 3. Összeállítjuk a frontendnek a megfelelő formátumot
-  const formattedComments = data.map(c => ({
-    ...c,
-    user: {
-      // Ha ez a te kommented, kiírjuk az e-mailedet, ha másé, egyelőre egy azonosítót kap.
-      email: user && c.user_id === user.id ? user.email : `Kolléga (${c.user_id.substring(0,4)})`
+  // Okos lekérdezés: Kiderítjük a workspace_id-t a feladatból vagy a doksiból
+  let wsId = null;
+  if (targetType === 'task') {
+      const { data: tData } = await supabase.from('tasks').select('workspace_id').eq('id', targetId).single()
+      wsId = tData?.workspace_id
+  } else {
+      const { data: dData } = await supabase.from('documents').select('projects(workspace_id)').eq('id', targetId).single()
+      // @ts-ignore
+      wsId = dData?.projects?.workspace_id
+  }
+
+  let members: any[] = []
+  if (wsId) {
+      const { data: mData } = await supabase.rpc('get_workspace_users', { ws_id: wsId })
+      members = mData || []
+  }
+
+  const formattedComments = data.map(c => {
+    const member = members.find(m => m.user_id === c.user_id)
+    return {
+      ...c,
+      user: {
+        email: member?.email || (user && c.user_id === user.id ? user.email : `Kolléga`),
+        name: member?.name || member?.email?.split('@')[0],
+        avatar_url: member?.avatar_url
+      }
     }
-  }))
+  })
 
   return { comments: formattedComments }
 }
@@ -467,24 +477,16 @@ export async function addComment(targetType: 'task' | 'document', targetId: stri
   if (!user) return { error: 'Nincs jogosultságod.' }
 
   const column = targetType === 'task' ? 'task_id' : 'document_id'
+  const { data, error } = await supabase.from('comments').insert([{ [column]: targetId, user_id: user.id, content }]).select().single()
+  if (error) return { error: 'Hiba a kommenteléskor.' }
 
-  // 1. TÖRLÖLTÜK A JOIN-T a .select() belsejéből!
-  const { data, error } = await supabase
-    .from('comments')
-    .insert([{ [column]: targetId, user_id: user.id, content }])
-    .select() // <--- Sima select, nincs auth.users hivatkozás
-    .single()
-
-  if (error) {
-    console.error("Hiba a komment mentésekor:", error)
-    return { error: 'Hiba a kommenteléskor.' }
-  }
-
-  // 2. Mivel mi magunk küldtük a kommentet, pontosan tudjuk a saját e-mailünket! 
-  // Hozzácsatoljuk az objektumhoz, mielőtt visszaküldjük a felületnek.
   const commentWithUser = {
     ...data,
-    user: { email: user.email }
+    user: { 
+        email: user.email,
+        name: user.user_metadata?.name || user.email?.split('@')[0],
+        avatar_url: user.user_metadata?.avatar_url
+    }
   }
 
   return { comment: commentWithUser }
@@ -730,29 +732,30 @@ export async function getTimeEntries(projectId: string) {
 
 export async function addTimeEntry(
   workspaceId: string, 
-  projectId: string, 
+  projectId: string | null, 
   description: string, 
   date: string, 
   durationMinutes: number,
-  taskId: string | null = null // <-- ÚJ PARAMÉTER: taskId
+  taskId: string | null = null
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
   if (durationMinutes <= 0) return { error: 'Az időtartamnak nagyobbnak kell lennie 0-nál.' }
-  if (!description.trim()) return { error: 'A leírás kötelező.' }
+
+  const finalDescription = description.trim() || 'Névtelen munka'
 
   const { error } = await supabase
     .from('time_entries')
     .insert([{
       workspace_id: workspaceId,
-      project_id: projectId,
+      project_id: projectId || null,
       user_id: user.id,
-      description,
+      description: finalDescription,
       date,
       duration_minutes: durationMinutes,
-      task_id: taskId // <-- ELMENTJÜK A FELADATOT IS
+      task_id: taskId || null
     }])
 
   if (error) {
@@ -763,6 +766,28 @@ export async function addTimeEntry(
   return { success: true }
 }
 
+export async function updateTimeEntry(entryId: string, updates: any) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Nincs jogosultságod.' }
+
+  if (updates.description !== undefined && !updates.description.trim()) {
+    updates.description = 'Névtelen munka'
+  }
+
+  const { error } = await supabase
+    .from('time_entries')
+    .update(updates)
+    .eq('id', entryId)
+    .eq('user_id', user.id) // Csak a sajátját szerkesztheti
+
+  if (error) {
+    console.error("Hiba az idő frissítésekor:", error)
+    return { error: 'Nem sikerült frissíteni a bejegyzést.' }
+  }
+
+  return { success: true }
+}
 
 export async function deleteTimeEntry(entryId: string) {
   const supabase = await createClient()

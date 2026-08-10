@@ -7,7 +7,6 @@ import { getProjectIcon, getProjectColor } from '@/lib/project-icons'
 
 export const dynamic = 'force-dynamic'
 
-// Ugyanaz a stílus-szótár, amit a belső layoutban is használunk a tökéletes konzisztenciáért!
 const STATUS_MAP = {
   planning: { label: 'Tervezés alatt', class: 'bg-slate-500/10 text-slate-500 border-slate-500/20' },
   in_progress: { label: 'Folyamatban', class: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
@@ -15,14 +14,18 @@ const STATUS_MAP = {
   completed: { label: 'Befejezett', class: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' },
 }
 
+// BŐVÍTVE: searchParams hozzáadása az URL lekéréséhez
 type Props = {
   params: Promise<{ workspaceId: string }>
+  searchParams: Promise<{ [key: string]: string | undefined }>
 }
 
 export default async function ProjectsPage(props: Props) {
   const { workspaceId } = await props.params
+  const searchParams = await props.searchParams // <- URL paraméterek lekérése
+  const autoOpenModal = searchParams?.newProject === 'true' // <- Megnézzük, igaz-e
+
   const supabase = await createClient()
-  
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -44,16 +47,19 @@ export default async function ProjectsPage(props: Props) {
           </p>
         </div>
         
+        {/* ÁTADJUK AZ autoOpen PARAMÉTERT */}
         <CreateProjectModal 
           workspaceId={workspace.id} 
           workspaceMembers={workspaceMembersData || []}
           workspaceGroups={workspaceGroups || []}
           currentUserId={user.id}
+          autoOpen={autoOpenModal} 
         />
       </div>
 
       {projects && projects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* ... A kód többi része itt változatlan marad a map() végéig ... */}
           {projects.map((project) => {
             const Icon = getProjectIcon(project.emoji)
             const colorTheme = getProjectColor(project.color)
@@ -105,6 +111,7 @@ export default async function ProjectsPage(props: Props) {
             workspaceMembers={workspaceMembersData || []}
             workspaceGroups={workspaceGroups || []}
             currentUserId={user.id}
+            autoOpen={autoOpenModal}
           />
         </div>
       )}

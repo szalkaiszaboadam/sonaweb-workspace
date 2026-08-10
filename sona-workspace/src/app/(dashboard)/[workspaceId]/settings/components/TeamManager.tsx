@@ -2,15 +2,19 @@
 
 import { useState } from 'react'
 import { User as UserIcon, Shield, Trash2, ShieldAlert, X, AlertTriangle, ChevronDown } from 'lucide-react'
-import { updateMemberRole, removeMember } from '../actions'
-import { SelectDropdown } from '@/components/ui/SelectDropdown' // Feltételezve, hogy ez megvan nálad
+import { updateMemberRole, removeMember } from '../../team/actions'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { Button } from '@/components/ui/Button'
+// 1. MEGOLDÁS: Importáljuk be az új Avatar komponenst!
+import { Avatar } from '@/components/ui/Avatar'
 
+// 2. MEGOLDÁS: Bővítsük ki a típust az avatar_url-el!
 type Member = {
     id: string
     email: string
     name: string
     role: 'owner' | 'member'
+    avatar_url?: string // <-- Ez hiányzott a TypeScriptnek!
 }
 
 type Props = {
@@ -88,20 +92,25 @@ export function TeamManager({ workspaceId, members, currentUserId, currentUserRo
             {/* LISTA */}
 {/* LISTA */}
       <div className="bg-surface border border-border rounded-xl shadow-sm">
-        <div className="divide-y divide-border">
-          {members.map(member => (
-            <div key={member.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-sona-neutral/5 transition-colors first:rounded-t-xl last:rounded-b-xl">
-                
+
+{/* PRÉMIUM LISTA DIZÁJN */}
+            <div className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+                <div className="divide-y divide-border">
+                    {members.map(member => (
+                        <div key={member.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-sona-neutral/5 transition-colors">
+                            
                             <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${member.role === 'owner' ? 'bg-orange-500/10 text-orange-500' : 'bg-primary/10 text-primary'
-                                    }`}>
-                                    {member.name.charAt(0).toUpperCase()}
-                                </div>
+                               <Avatar 
+  name={member.name} 
+  url={member.avatar_url} 
+  className="w-10 h-10 text-sm" 
+  fallbackClass={member.role === 'owner' ? 'bg-foreground text-background' : 'bg-sona-neutral/10 text-foreground'} 
+/>
                                 <div className="flex flex-col">
                                     <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-foreground">{member.name}</span>
+                                        <span className="font-semibold text-foreground text-sm">{member.name}</span>
                                         {member.id === currentUserId && (
-                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-sona-neutral/10 text-sona-neutral">
+                                            <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border bg-background text-sona-neutral shadow-sm">
                                                 Te
                                             </span>
                                         )}
@@ -110,12 +119,9 @@ export function TeamManager({ workspaceId, members, currentUserId, currentUserRo
                                 </div>
                             </div>
 
-                            {/* VEZÉRLŐK (Csak a Tulajdonosok látják, hogy szerkeszthető) */}
                             <div className="flex items-center gap-3">
-
-                                {/* Szerepkör választó (vagy csak jelvény, ha Member nézi) */}
                                 {currentUserRole === 'owner' ? (
-                                    <div className="w-[140px]">
+                                    <div className="w-[130px]">
                                         <SelectDropdown
                                             value={member.role}
                                             onChange={(val) => { if (val) handleRoleChange(member.id, member.name, val) }}
@@ -127,13 +133,12 @@ export function TeamManager({ workspaceId, members, currentUserId, currentUserRo
                                         />
                                     </div>
                                 ) : (
-                                    <div className="px-3 py-1.5 rounded-lg border border-border bg-background flex items-center gap-1.5">
-                                        {member.role === 'owner' ? <Shield className="w-3.5 h-3.5 text-orange-500" /> : <UserIcon className="w-3.5 h-3.5 text-sona-neutral" />}
+                                    <div className="px-3 py-1.5 rounded-lg border border-border bg-surface flex items-center gap-1.5 shadow-sm">
+                                        {member.role === 'owner' ? <Shield className="w-3.5 h-3.5 text-foreground" /> : <UserIcon className="w-3.5 h-3.5 text-sona-neutral" />}
                                         <span className="text-xs font-semibold">{member.role === 'owner' ? 'Tulajdonos' : 'Tag'}</span>
                                     </div>
                                 )}
-
-                                {/* Törlés gomb (Csak Tulajdonos látja) */}
+                                
                                 {currentUserRole === 'owner' && (
                                     <button
                                         onClick={() => handleKickClick(member.id, member.name)}
@@ -147,6 +152,9 @@ export function TeamManager({ workspaceId, members, currentUserId, currentUserRo
                         </div>
                     ))}
                 </div>
+            </div>
+
+
             </div>
 
             {/* ========================================================= */}

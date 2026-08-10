@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react' // <- useEffect importálva
+import { useRouter, usePathname } from 'next/navigation' // <- usePathname importálva
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -14,24 +14,39 @@ type Props = {
   workspaceMembers: any[]
   workspaceGroups: any[]
   currentUserId: string
+  autoOpen?: boolean // <- Új opcionális paraméter
 }
 
-export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGroups, currentUserId }: Props) {
+export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGroups, currentUserId, autoOpen = false }: Props) {
   const router = useRouter()
-  const [isOpen, setIsOpen] = useState(false)
+  const pathname = usePathname() // Lekérjük az aktuális tiszta útvonalat
+  
+  // Ha az autoOpen true, azonnal nyitva indul
+  const [isOpen, setIsOpen] = useState(autoOpen)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [isPrivate, setIsPrivate] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
-const [selectedEmoji, setSelectedEmoji] = useState('folder')
-const [selectedColor, setSelectedColor] = useState('primary')
+  const [selectedEmoji, setSelectedEmoji] = useState('folder')
+  const [selectedColor, setSelectedColor] = useState('primary')
+
+  // FIGYELJÜK AZ AUTO-OPEN VÁLTOZÁST
+  useEffect(() => {
+    if (autoOpen) {
+      setIsOpen(true)
+      // Eltávolítjuk a ?newProject=true paramétert az URL-ből, 
+      // így egy F5 frissítés esetén nem nyílik meg újra a felugró ablak!
+      router.replace(pathname, { scroll: false })
+    }
+  }, [autoOpen, pathname, router])
 
   const toggleMember = (id: string) => setSelectedMembers(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id])
   const toggleGroup = (id: string) => setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    // ... Innen a kód többi része változatlan! ...
     e.preventDefault()
     setIsLoading(true)
     setError(null)

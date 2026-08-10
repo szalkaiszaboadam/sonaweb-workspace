@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import { MessageSquare, Send, Trash2 } from 'lucide-react'
 import { getComments, addComment, deleteComment } from '../actions'
 import { Button } from '@/components/ui/Button'
+import { Avatar } from '@/components/ui/Avatar'
 
 type Comment = {
   id: string
   content: string
   created_at: string
-  user: { email: string }
+  user: { email: string, name?: string, avatar_url?: string }
 }
 
 export function CommentSection({ targetType, targetId }: { targetType: 'task' | 'document', targetId: string }) {
@@ -55,19 +56,18 @@ export function CommentSection({ targetType, targetId }: { targetType: 'task' | 
           <p className="text-xs text-sona-neutral italic">Még nincs hozzászólás.</p>
         ) : (
           comments.map((c) => (
-            <div key={c.id} className="bg-sona-neutral/5 p-3 rounded-lg group relative">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-semibold text-foreground">{c.user?.email || 'Ismeretlen'}</span>
-                <span className="text-[10px] text-sona-neutral">
-                  {new Date(c.created_at).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                </span>
+            <div key={c.id} className="bg-sona-neutral/5 p-3 rounded-lg group relative flex gap-3">
+              <Avatar name={c.user?.name || c.user?.email} url={c.user?.avatar_url} className="w-8 h-8 text-xs shrink-0" />
+              <div className="flex flex-col w-full min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-foreground truncate mr-2">{c.user?.name || c.user?.email || 'Ismeretlen'}</span>
+                    <span className="text-[10px] text-sona-neutral shrink-0">
+                      {new Date(c.created_at).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{c.content}</p>
               </div>
-              <p className="text-sm text-foreground whitespace-pre-wrap">{c.content}</p>
-              
-              <button 
-                onClick={() => handleDelete(c.id)}
-                className="absolute top-2 right-2 p-1.5 bg-background rounded-md text-sona-neutral hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-border"
-              >
+              <button onClick={() => handleDelete(c.id)} className="absolute top-2 right-2 p-1.5 bg-background rounded-md text-sona-neutral hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-border">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>

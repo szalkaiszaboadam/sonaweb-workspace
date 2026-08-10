@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 
 export type TimerData = {
   workspaceId: string
-  projectId: string
+  projectId: string | null
   description: string
   taskId: string | null
   status: 'idle' | 'running' | 'paused'
@@ -13,18 +13,13 @@ export type TimerData = {
 }
 
 const defaultTimer: TimerData = {
-  workspaceId: '', projectId: '', description: '', taskId: null,
+  workspaceId: '', projectId: null, description: '', taskId: null,
   status: 'idle', accumulatedSeconds: 0, lastStartTime: null
 }
 
-// =========================================================
-// KÖZPONTI MEMÓRIA (PUB-SUB PATTERN)
-// Ez teszi lehetővé, hogy az összes komponens egyszerre frissüljön!
-// =========================================================
 let globalTimerState: TimerData = defaultTimer
 const listeners = new Set<() => void>()
 
-// Első betöltéskor kiolvassuk a mentett állapotot
 if (typeof window !== 'undefined') {
   const saved = localStorage.getItem('sona-global-timer')
   if (saved) {
@@ -32,7 +27,6 @@ if (typeof window !== 'undefined') {
   }
 }
 
-// Minden komponenst értesítünk, ha változás van
 function notify() {
   if (typeof window !== 'undefined') {
     if (globalTimerState.status === 'idle') {
@@ -55,17 +49,14 @@ export function useGlobalTimer() {
   const [timer, setTimer] = useState<TimerData>(globalTimerState)
   const [displaySeconds, setDisplaySeconds] = useState(0)
 
-  // Feliratkozunk a központi memória változásaira
   useEffect(() => {
     const handleUpdate = () => setTimer(globalTimerState)
     listeners.add(handleUpdate)
     return () => { listeners.delete(handleUpdate) }
   }, [])
 
-  // A másodpercek pörgetése valós időben
   useEffect(() => {
     let interval: NodeJS.Timeout
-    
     const updateDisplay = () => {
       if (globalTimerState.status === 'idle') {
         setDisplaySeconds(0)
@@ -76,17 +67,14 @@ export function useGlobalTimer() {
         setDisplaySeconds(globalTimerState.accumulatedSeconds + elapsed)
       }
     }
-
-    updateDisplay() // Azonnali frissítés
-    
+    updateDisplay()
     if (timer.status === 'running') {
       interval = setInterval(updateDisplay, 1000)
     }
-    
     return () => { if (interval) clearInterval(interval) }
   }, [timer.status, timer.accumulatedSeconds, timer.lastStartTime])
 
-  const start = (workspaceId: string, projectId: string, description: string, taskId: string | null = null) => {
+  const start = (workspaceId: string, projectId: string | null = null, description: string = '', taskId: string | null = null) => {
     globalTimerState = {
       workspaceId, projectId, description, taskId,
       status: 'running',
@@ -124,10 +112,8 @@ export function useGlobalTimer() {
       total += Math.floor((Date.now() - globalTimerState.lastStartTime) / 1000)
     }
     const finalData = { ...globalTimerState, totalSeconds: total }
-    
     globalTimerState = defaultTimer
     notify()
-    
     return finalData
   }
 

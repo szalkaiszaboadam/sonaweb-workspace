@@ -2,6 +2,9 @@ import { Plus, ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { CreateWorkspaceModal } from './components/CreateWorkspaceModal'
 import Link from 'next/link'
+import { UserMenu } from '@/components/layout/UserMenu'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
+
 
 export const dynamic = 'force-dynamic'
 
@@ -24,17 +27,28 @@ export default async function WorkspacesPage() {
   // 3. Tisztítjuk az adatot a kártyákhoz
   const workspaces = membersData?.map(m => m.workspaces).filter(Boolean) || []
 
-  return (
+return (
     <div className="max-w-4xl mx-auto p-6 md:p-12 relative">
       
-
+      {/* Itt hívjuk meg a gombokat és a profilt */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-semibold text-foreground">Workspace-ek</h1>
           <p className="text-sona-neutral mt-1">Válaszd ki, melyik munkaterületen szeretnél dolgozni.</p>
         </div>
         
-        <CreateWorkspaceModal />
+        <div className="flex items-center gap-4">
+          <ThemeToggle />
+          {user && (
+            <UserMenu 
+              email={user.email || ''} 
+              name={user.user_metadata?.name} 
+              avatarUrl={user.user_metadata?.avatar_url} 
+              variant="header" 
+            />
+          )}
+          <CreateWorkspaceModal />
+        </div>
       </div>
 
       {workspaces.length === 0 ? (

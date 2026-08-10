@@ -43,12 +43,17 @@ export function InviteMemberModal({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  return (
+return (
     <>
-      <Button onClick={() => setIsOpen(true)} className="flex items-center gap-2">
+    
+<button 
+        onClick={() => setIsOpen(true)} 
+        // Visszaraktuk a piros hátteret és a fehér szöveget!
+        className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm shrink-0"
+      >
         <UserPlus className="w-4 h-4" />
         Tag meghívása
-      </Button>
+      </button>
 
       <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Új csapattag meghívása">
         {success ? (
@@ -68,20 +73,20 @@ export function InviteMemberModal({ workspaceId }: { workspaceId: string }) {
             <Input 
               label="E-mail cím" 
               name="email" 
-              type="email"
-              placeholder="kolléga@ugynokseg.hu" 
+              type="email" 
+              placeholder="kollega@ugynokseg.hu" 
               required 
-              autoFocus
+              autoFocus 
             />
             
-            {error && <p className="text-sm text-red-500 bg-red-500/10 p-2 rounded">{error}</p>}
+            {error && <p className="text-sm text-red-500 bg-red-500/10 p-2 rounded-lg">{error}</p>}
             
             <div className="flex justify-end gap-3 mt-4">
               <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
                 Mégse
               </Button>
               <Button type="submit" disabled={isLoading} className="w-auto">
-                {isLoading ? 'Küldés...' : 'Meghívó küldése'}
+                {isLoading ? 'Küldés...' : 'Meghívás elküldése'}
               </Button>
             </div>
           </form>

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Users, Shield, Globe2, Crown, Lock, Building2 } from 'lucide-react'
+import { Avatar } from '@/components/ui/Avatar'
 
 // ITT A MEGOLDÁS: Megmondjuk a TypeScriptnek, hogy hogy néz ki egy tag
 type TeamMember = {
@@ -8,6 +9,7 @@ type TeamMember = {
   name: string | null
   email: string
   role: string
+  avatar_url?: string | null // <--- ÚJ
 }
 
 export default async function ProjectTeamPage({
@@ -30,11 +32,12 @@ export default async function ProjectTeamPage({
   const { data: wsRoles } = await supabase.from('workspace_members').select('user_id, role').eq('workspace_id', workspaceId)
 
   // Összefésüljük a neveket, emaileket és a szerepköröket (role), ÉS rákényszerítjük a TeamMember típust!
-  const workspaceMembers: TeamMember[] = (wsUsers || []).map((u: any) => ({
+const workspaceMembers: TeamMember[] = (wsUsers || []).map((u: any) => ({
     user_id: u.user_id,
     name: u.name,
     email: u.email,
-    role: wsRoles?.find(r => r.user_id === u.user_id)?.role || 'member'
+    role: wsRoles?.find(r => r.user_id === u.user_id)?.role || 'member',
+    avatar_url: u.avatar_url // <--- ÚJ
   }))
 
   // 3. Projekt-specifikus hozzáférések (ha privát)
@@ -93,9 +96,11 @@ export default async function ProjectTeamPage({
             <Crown className="w-4 h-4" /> Projektvezető
           </h3>
           <div className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-              {projectCreator?.name ? projectCreator.name.charAt(0).toUpperCase() : '?'}
-            </div>
+           <Avatar 
+  name={projectCreator?.name || '?'} 
+  url={projectCreator?.avatar_url} 
+  className="w-10 h-10 text-sm" 
+/>
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-foreground">
                 {projectCreator?.name || 'Ismeretlen'} {projectCreator?.user_id === user.id && '(Te)'}
@@ -117,9 +122,12 @@ export default async function ProjectTeamPage({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {workspaceOwners.map(owner => (
                 <div key={owner.user_id} className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-sona-neutral/10 flex items-center justify-center text-foreground font-bold text-sm">
-                    {owner.name ? owner.name.charAt(0).toUpperCase() : '?'}
-                  </div>
+                  <Avatar 
+  name={owner.name || '?'} 
+  url={owner.avatar_url} 
+  fallbackClass="bg-sona-neutral/10 text-foreground" 
+  className="w-10 h-10 text-sm" 
+/>
                   <div className="flex flex-col min-w-0">
                     <span className="text-sm font-semibold text-foreground truncate">
                       {owner.name || 'Ismeretlen'} {owner.user_id === user.id && '(Te)'}
@@ -165,9 +173,12 @@ export default async function ProjectTeamPage({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {activeMembers.map(member => (
                 <div key={member.user_id} className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-sona-neutral/10 flex items-center justify-center text-foreground font-bold text-sm">
-                    {member.name ? member.name.charAt(0).toUpperCase() : '?'}
-                  </div>
+                <Avatar 
+  name={member.name || '?'} 
+  url={member.avatar_url} 
+  fallbackClass="bg-sona-neutral/10 text-foreground" 
+  className="w-10 h-10 text-sm" 
+/>
                   <div className="flex flex-col min-w-0">
                     <span className="text-sm font-semibold text-foreground truncate">
                       {member.name || 'Ismeretlen'} {member.user_id === user.id && '(Te)'}

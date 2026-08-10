@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { updateProject, deleteProject, toggleProjectMember, toggleProjectGroup } from '../actions'
 import { Save, Trash2, AlertTriangle, Globe2, Lock, Users, Shield } from 'lucide-react'
 import { PROJECT_ICONS, PROJECT_COLORS } from '@/lib/project-icons'
+import { Avatar } from '@/components/ui/Avatar'
 
 type Props = {
   project: any
@@ -174,10 +175,13 @@ export function SettingsForm({ project, workspaceId, workspaceMembers, workspace
                         const isAdded = activeMemberIds.includes(member.user_id)
                         return (
                           <div key={member.user_id} className="flex items-center justify-between p-3 bg-background border border-border rounded-lg">
+                            <div className="flex items-center gap-3">
+                            <Avatar name={member.name || 'Ismeretlen'} url={member.avatar_url} className="w-8 h-8 text-xs shrink-0" />
                             <div className="flex flex-col">
                               <span className="text-sm font-medium text-foreground">{member.name || 'Ismeretlen'}</span>
                               <span className="text-xs text-sona-neutral">{member.email}</span>
                             </div>
+                          </div>
                             <button type="button" disabled={isLoading} onClick={() => handleToggleMember(member.user_id, isAdded)} className={`px-3 py-1.5 text-xs font-bold uppercase rounded-md transition-colors ${isAdded ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}>{isAdded ? 'Eltávolítás' : 'Hozzáadás'}</button>
                           </div>
                         )
