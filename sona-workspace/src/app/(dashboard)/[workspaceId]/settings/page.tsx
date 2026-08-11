@@ -4,11 +4,12 @@ import { RenameWorkspaceForm } from './components/RenameWorkspaceForm'
 import { DeleteWorkspaceButton } from './components/DeleteWorkspaceButton'
 import { Avatar } from '@/components/ui/Avatar'
 import { Settings, AlertTriangle, Users, Clock, Mail } from 'lucide-react'
+import { RolesManager } from './components/RolesManager'
+import { checkPermission } from '@/lib/permissions'
 
 // Az áthelyezett komponensek importálása
 import { TeamManager } from './components/TeamManager'
 import { InviteMemberModal } from './components/InviteMemberModal'
-import { GroupManager } from './components/GroupManager'
 
 export default async function SettingsPage({
   params,
@@ -37,14 +38,45 @@ export default async function SettingsPage({
   const { data: workspace } = await supabase.from('workspaces').select('name').eq('id', workspaceId).single()
 
   // --- CSAPAT ÉS JOGOSULTSÁG ADATOK LEKÉRÉSE ---
-  const { data: membersData } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
-const members = membersData?.map((m: any) => ({
-    id: m.user_id,
-    email: m.email,
-    name: m.name || m.email.split('@')[0],
-    role: m.role || 'member',
-    avatar_url: m.avatar_url // <--- EZ AZ ÚJ SOR
+const isOwner = memberData?.role === 'owner'
+  const canManageRoles = isOwner || await checkPermission(workspaceId, 'roles:manage')
+  const canManageTeam = isOwner || await checkPermission(workspaceId, 'team:manage')
+
+  // Ha egyikhez sincs joga, ne is lássa a settingset!
+  if (!isOwner && !(await checkPermission(workspaceId, 'workspace:settings'))) {
+    redirect(`/${workspaceId}`) 
+  }
+
+  // --- SZEREPKÖRÖK LEKÉRÉSE ---
+  const { data: rolesData } = await supabase.from('roles').select('id, name, role_permissions(permission)').eq('workspace_id', workspaceId)
+  const customRoles = rolesData?.map(r => ({
+    id: r.id,
+    name: r.name,
+    permissions: r.role_permissions.map((rp: any) => rp.permission)
   })) || []
+
+  // --- CSAPAT ÉS JOGOSULTSÁG ADATOK LEKÉRÉSE ---
+const { data: wsUsers } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
+  
+  // Lekérjük a belső DB ID-kat, a member_roles-t, ÉS a member_permission_overrides-t!
+  const { data: internalMembers } = await supabase
+    .from('workspace_members')
+    .select('id, user_id, role, member_roles(role_id), member_permission_overrides(permission, is_granted)')
+    .eq('workspace_id', workspaceId)
+
+  const members = wsUsers?.map((u: any) => {
+    const internal = internalMembers?.find(im => im.user_id === u.user_id)
+    return {
+      id: u.user_id,
+      db_id: internal?.id,
+      email: u.email,
+      name: u.name || u.email.split('@')[0],
+      role: internal?.role || 'member',
+      avatar_url: u.avatar_url,
+      customRoleIds: internal?.member_roles?.map((mr: any) => mr.role_id) || [],
+      customPermissions: internal?.member_permission_overrides?.filter((o:any) => o.is_granted).map((o:any) => o.permission) || []
+    }
+  }) || []
 
   const { data: invitations } = await supabase
     .from('workspace_invitations')
@@ -65,6 +97,8 @@ const members = membersData?.map((m: any) => ({
     name: g.name,
     memberIds: g.workspace_group_members.map((m: any) => m.user_id)
   })) || []
+
+  
 
   return (
     <div className="max-w-5xl w-full flex flex-col gap-8 animate-in fade-in duration-500 pb-12">
@@ -101,29 +135,41 @@ const members = membersData?.map((m: any) => ({
         {/* ========================================== */}
         {/* CSAPAT ÉS JOGOSULTSÁGOK */}
         {/* ========================================== */}
-        <section className="flex flex-col gap-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-foreground">Csapat és Jogosultságok</h2>
-              <p className="text-sm text-sona-neutral mt-1">Kezeld a tagokat és a hozzáférési szinteket.</p>
+        {canManageRoles && (
+          <>
+            <section className="flex flex-col gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Jogosultságok</h2>
+                <p className="text-sm text-sona-neutral mt-1">Hozzon létre egyedi szerepköröket a csapattagoknak.</p>
+              </div>
+              <div className="bg-surface border border-border rounded-2xl p-6 shadow-sm">
+                <RolesManager workspaceId={workspaceId} roles={customRoles} canManage={canManageRoles} />
+              </div>
+            </section>
+            <hr className="border-border" />
+          </>
+        )}
+
+        {canManageTeam && (
+          <section className="flex flex-col gap-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Csapat Tagjai</h2>
+                <p className="text-sm text-sona-neutral mt-1">Kezeld a tagokat és oszd ki a szerepköröket vagy egyéni jogokat.</p>
+              </div>
+              <InviteMemberModal workspaceId={workspaceId} />
             </div>
-            <InviteMemberModal workspaceId={workspaceId} />
-          </div>
-          
-          <TeamManager 
-            workspaceId={workspaceId} 
-            members={members} 
-            currentUserId={user.id}
-            currentUserRole="owner"
-          />
-          
-          <GroupManager 
-            workspaceId={workspaceId}
-            members={members}
-            groups={groups}
-            currentUserRole="owner"
-          />
-        </section>
+            
+            <TeamManager 
+              workspaceId={workspaceId} 
+              members={members} 
+              currentUserId={user.id}
+              currentUserRole={isOwner ? 'owner' : 'member'}
+              availableRoles={customRoles}
+            />
+            {/* TÖRÖLTÜK A GROUP MANAGER-T */}
+          </section>
+        )}
 
         <hr className="border-border" />
 

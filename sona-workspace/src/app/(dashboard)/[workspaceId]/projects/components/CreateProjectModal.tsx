@@ -12,12 +12,11 @@ import { PROJECT_ICONS, PROJECT_COLORS } from '@/lib/project-icons'
 type Props = {
   workspaceId: string
   workspaceMembers: any[]
-  workspaceGroups: any[]
   currentUserId: string
   autoOpen?: boolean // <- Új opcionális paraméter
 }
 
-export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGroups, currentUserId, autoOpen = false }: Props) {
+export function CreateProjectModal({ workspaceId, workspaceMembers, currentUserId, autoOpen = false }: Props) {
   const router = useRouter()
   const pathname = usePathname() // Lekérjük az aktuális tiszta útvonalat
   
@@ -43,7 +42,6 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
   }, [autoOpen, pathname, router])
 
   const toggleMember = (id: string) => setSelectedMembers(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id])
-  const toggleGroup = (id: string) => setSelectedGroups(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     // ... Innen a kód többi része változatlan! ...
@@ -54,7 +52,6 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
     const formData = new FormData(e.currentTarget)
     formData.append('is_private', isPrivate ? 'true' : 'false')
     formData.append('member_ids', JSON.stringify(selectedMembers))
-    formData.append('group_ids', JSON.stringify(selectedGroups))
     formData.append('emoji', selectedEmoji)
     formData.append('color', selectedColor)
     
@@ -149,20 +146,6 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, workspaceGro
                   <Users className="w-4 h-4 text-sona-neutral" /> Kiket hívsz meg?
                 </h3>
                 <div className="flex flex-col gap-4">
-                  {workspaceGroups.length > 0 && (
-                    <div className="flex flex-col gap-2">
-                      <h4 className="text-[10px] font-bold text-sona-neutral uppercase tracking-wider">Csoportok</h4>
-                      {workspaceGroups.map(group => {
-                        const isAdded = selectedGroups.includes(group.id)
-                        return (
-                          <div key={group.id} className="flex items-center justify-between p-2.5 bg-sona-neutral/5 border border-border rounded-lg">
-                            <span className="text-sm font-medium text-foreground">{group.name}</span>
-                            <button type="button" onClick={() => toggleGroup(group.id)} className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${isAdded ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}`}>{isAdded ? 'Eltávolítás' : 'Hozzáadás'}</button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
 
                   <div className="flex flex-col gap-2">
                     <h4 className="text-[10px] font-bold text-sona-neutral uppercase tracking-wider">Munkatársak</h4>

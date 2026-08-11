@@ -1,85 +1,96 @@
-import { Plus, ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
-import { CreateWorkspaceModal } from './components/CreateWorkspaceModal'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { UserMenu } from '@/components/layout/UserMenu'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
-
+import { UserMenu } from '@/components/layout/UserMenu'
+import { CreateWorkspaceModal } from './components/CreateWorkspaceModal'
+import { Building2, ShieldCheck } from 'lucide-react'
+import { TopNavbar } from '@/components/layout/TopNavbar'
 
 export const dynamic = 'force-dynamic'
 
 export default async function WorkspacesPage() {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  // 1. Biztosra megyünk: lekérjük a bejelentkezett usert
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  // 2. BOMBABIZTOS LEKÉRDEZÉS: A tagságaidat keressük meg, és rácsatlakoztatjuk a workspace adatokat
-  const { data: membersData, error: dbError } = await supabase
+  // Munkaterületek lekérése
+  const { data: memberData } = await supabase
     .from('workspace_members')
-    .select(`
-      workspace_id,
-      is_owner,
-      workspaces (*)
-    `)
-    .eq('user_id', user?.id || '')
+    .select('role, workspaces(id, name)')
+    .eq('user_id', user.id)
 
-  // 3. Tisztítjuk az adatot a kártyákhoz
-  const workspaces = membersData?.map(m => m.workspaces).filter(Boolean) || []
+  const workspaces = memberData?.map(m => {
+    const ws = Array.isArray(m.workspaces) ? m.workspaces[0] : m.workspaces
+    return {
+      id: ws?.id,
+      name: ws?.name || 'Ismeretlen',
+      role: m.role
+    }
+  }).filter(ws => ws.id) || []
 
 return (
-    <div className="max-w-4xl mx-auto p-6 md:p-12 relative">
+    <div className="flex-1 w-full min-h-screen bg-background flex flex-col">
       
-      {/* Itt hívjuk meg a gombokat és a profilt */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground">Workspace-ek</h1>
-          <p className="text-sona-neutral mt-1">Válaszd ki, melyik munkaterületen szeretnél dolgozni.</p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          {user && (
-            <UserMenu 
-              email={user.email || ''} 
-              name={user.user_metadata?.name} 
-              avatarUrl={user.user_metadata?.avatar_url} 
-              variant="header" 
-            />
-          )}
-          <CreateWorkspaceModal />
-        </div>
-      </div>
+      {/* EZ A RÉGI HEADER HELYETT LÉVŐ ÚJ KÓD: */}
+      <TopNavbar 
+        userEmail={user.email || ''}
+        userName={user.user_metadata?.name}
+        userAvatar={user.user_metadata?.avatar_url}
+      />
 
-      {workspaces.length === 0 ? (
-        <div className="bg-surface border border-dashed border-border rounded-xl p-12 text-center flex flex-col items-center justify-center">
-          <div className="w-16 h-16 bg-sona-neutral/10 rounded-full flex items-center justify-center mb-4">
-            <Plus className="w-8 h-8 text-sona-neutral" />
-          </div>
-          <h3 className="text-lg font-medium text-foreground mb-2">Nincs még Workspace-ed</h3>
-          <p className="text-sona-neutral mb-6 max-w-sm">
-            Hozz létre egy új munkaterületet a projektek, feladatok és dokumentumok kezeléséhez.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {workspaces.map((workspace: any) => (
-            <Link 
-              key={workspace.id} 
-              href={`/${workspace.id}/overview`} 
-              className="group bg-surface border border-border rounded-xl p-5 hover:border-primary transition-colors hover:shadow-md cursor-pointer flex flex-col justify-between h-32"
-            >
-              <h3 className="text-lg font-medium text-foreground group-hover:text-primary transition-colors truncate">
-                {workspace.name}
-              </h3>
-              <div className="flex justify-between items-center text-sm text-sona-neutral">
-                <span>Belépés</span>
-                <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 transform" />
+      {/* KÖZÉPRE ZÁRT TARTALOM (Innentől marad a régi) */}
+      <main className="flex-1 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg bg-surface border border-border rounded-2xl p-6 md:p-8 shadow-sm">
+          
+          {workspaces.length === 0 ? (
+            /* ÜRES ÁLLAPOT */
+            <div className="text-center flex flex-col items-center py-6">
+              <div className="w-16 h-16 bg-sona-neutral/10 rounded-2xl flex items-center justify-center mb-4">
+                <Building2 className="w-8 h-8 text-sona-neutral" />
               </div>
-            </Link>
-          ))}
+              <h1 className="text-2xl font-bold text-foreground mb-2">Még nincs workspace-ed.</h1>
+              <p className="text-sona-neutral mb-8">Hozz létre egyet, hogy elkezdhess dolgozni.</p>
+              
+              <CreateWorkspaceModal variant="empty" />
+            </div>
+          ) : (
+            /* LISTA ÁLLAPOT */
+            <>
+              <h1 className="text-2xl font-bold text-foreground mb-6 text-center">
+                Válassz egy workspace-t
+              </h1>
+              
+              <div className="flex flex-col gap-3 mb-6 max-h-[50vh] overflow-y-auto pr-1">
+                {workspaces.map(ws => (
+                  <Link 
+                    key={ws.id} 
+                    href={`/${ws.id}/overview`}
+                    className="flex items-center p-4 rounded-xl border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-lg mr-4 shrink-0">
+                      {ws.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="font-bold text-foreground truncate">{ws.name}</h2>
+                      <div className="flex items-center gap-1.5 text-sm text-sona-neutral mt-0.5">
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>{ws.role === 'owner' ? 'Owner' : 'Member'}</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+
+              <div className="pt-4 border-t border-border flex justify-center">
+                <CreateWorkspaceModal variant="default" />
+              </div>
+            </>
+          )}
+
         </div>
-      )}
+      </main>
     </div>
   )
 }

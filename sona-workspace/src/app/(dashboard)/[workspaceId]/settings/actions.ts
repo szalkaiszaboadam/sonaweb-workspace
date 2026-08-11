@@ -3,42 +3,28 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requirePermission } from '@/lib/permissions'
+
 
 // ==========================================
 // MUNKATERÜLET ÁLTALÁNOS AKCIÓI
 // ==========================================
 
 export async function updateWorkspaceName(workspaceId: string, newName: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Nincs bejelentkezve.' }
-
-  const { data: membership } = await supabase
-    .from('workspace_members')
-    .select('role')
-    .eq('workspace_id', workspaceId)
-    .eq('user_id', user.id)
-    .single()
-
-  if (membership?.role !== 'owner') {
-    return { error: 'Csak a munkaterület tulajdonosa módosíthatja a beállításokat.' }
+  try {
+    // 1. Jogosultság ellenőrzése egyetlen sorban!
+    await requirePermission(workspaceId, 'workspace:settings')
+    
+    const supabase = await createClient()
+    const { error } = await supabase.from('workspaces').update({ name: newName.trim() }).eq('id', workspaceId)
+    
+    if (error) return { error: 'Hiba történt a mentés során.' }
+    
+    revalidatePath('/', 'layout')
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message }
   }
-
-  if (!newName.trim()) {
-    return { error: 'A név nem lehet üres.' }
-  }
-
-  const { error } = await supabase
-    .from('workspaces')
-    .update({ name: newName.trim() })
-    .eq('id', workspaceId)
-
-  if (error) {
-    return { error: 'Hiba történt a mentés során.' }
-  }
-
-  revalidatePath('/', 'layout')
-  return { success: true }
 }
 
 export async function deleteWorkspace(workspaceId: string) {

@@ -1,58 +1,89 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation' // 1. Ezt importáljuk be!
+import { useRouter } from 'next/navigation'
+import { Plus } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Plus } from 'lucide-react'
-import { createWorkspace } from '../actions'
+import { createClient } from '@/lib/supabase/client'
 
-export function CreateWorkspaceModal() {
-  const router = useRouter() // 2. Ezt inicializáljuk!
+// Prop a gomb vizuális megjelenéséhez (Üres állapot vagy Lista alatti)
+type Props = {
+  variant?: 'empty' | 'default'
+}
+
+export function CreateWorkspaceModal({ variant = 'default' }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
-    
-    const formData = new FormData(e.currentTarget)
-    const result = await createWorkspace(formData)
 
-    if (result?.error) {
-      setError(result.error)
+    const formData = new FormData(e.currentTarget)
+    const name = formData.get('name') as string
+
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      setError('Nincs bejelentkezve.')
+      setIsLoading(false)
+      return
+    }
+
+    const { data, error: insertError } = await supabase.rpc('create_workspace', {
+      ws_name: name,
+      user_id: user.id
+    })
+
+    if (insertError) {
+      setError(insertError.message)
       setIsLoading(false)
     } else {
       setIsOpen(false)
-      setIsLoading(false)
-      router.refresh() // 3. Ez kényszeríti ki az oldal újratöltését a háttérben!
+      // Azonnal bedobjuk az új workspace-be
+      router.push(`/${data}/overview`) 
     }
   }
 
   return (
     <>
-      <Button onClick={() => setIsOpen(true)} className="flex items-center gap-2">
-        <Plus className="w-5 h-5" />
-        Új Workspace
-      </Button>
+      {/* DINAMIKUS GOMB MEGJELENÉS */}
+      {variant === 'empty' ? (
+        <Button onClick={() => setIsOpen(true)} className="gap-2 font-bold px-6">
+          <Plus className="w-4 h-4" />
+          Workspace létrehozása
+        </Button>
+      ) : (
+        <Button onClick={() => setIsOpen(true)} variant="secondary" className="gap-2 w-full font-bold">
+          <Plus className="w-4 h-4" />
+          Új workspace
+        </Button>
+      )}
 
-      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Workspace létrehozása">
+      {/* A MODAL */}
+      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Új workspace létrehozása">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input 
-            label="Munkaterület neve" 
-            id="name" 
-            name="name"      
-            placeholder="Pl.: Saját Ügynökség" 
+            label="Workspace neve" 
+            name="name" 
+            placeholder="pl. Sonaweb" 
             required 
-            autoFocus
+            autoFocus 
           />
           
-          {error && <p className="text-sm text-red-500 bg-red-500/10 p-2 rounded">{error}</p>}
+          {error && (
+            <p className="text-sm font-medium text-red-500 bg-red-500/10 p-2 rounded-lg">
+              {error}
+            </p>
+          )}
           
-          <div className="flex justify-end gap-3 mt-4">
+          <div className="flex justify-end gap-3 mt-2 border-t border-border pt-4">
             <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
               Mégse
             </Button>

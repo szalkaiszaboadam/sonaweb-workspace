@@ -26,11 +26,7 @@ export default async function ProjectSettingsPage({
 
   // 3. Adatok lekérése a meghívásokhoz
   const { data: workspaceMembersData } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
-  const { data: workspaceGroups } = await supabase.from('workspace_groups').select('*').eq('workspace_id', workspaceId)
-  
   const { data: projectMembers } = await supabase.from('project_members').select('user_id').eq('project_id', projectId)
-  const { data: projectGroups } = await supabase.from('project_groups').select('group_id').eq('project_id', projectId)
-
   return (
     <div className="max-w-3xl animate-in fade-in duration-500">
       <div className="mb-6">
@@ -44,9 +40,7 @@ export default async function ProjectSettingsPage({
         project={project} 
         workspaceId={workspaceId} 
         workspaceMembers={workspaceMembersData || []}
-        workspaceGroups={workspaceGroups || []}
         activeMemberIds={projectMembers?.map(pm => pm.user_id) || []}
-        activeGroupIds={projectGroups?.map(pg => pg.group_id) || []}
       />
     </div>
   )

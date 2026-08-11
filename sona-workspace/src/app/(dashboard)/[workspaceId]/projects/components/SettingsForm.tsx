@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
-import { updateProject, deleteProject, toggleProjectMember, toggleProjectGroup } from '../actions'
+import { updateProject, deleteProject, toggleProjectMember } from '../actions'
 import { Save, Trash2, AlertTriangle, Globe2, Lock, Users, Shield } from 'lucide-react'
 import { PROJECT_ICONS, PROJECT_COLORS } from '@/lib/project-icons'
 import { Avatar } from '@/components/ui/Avatar'
@@ -12,12 +12,10 @@ type Props = {
   project: any
   workspaceId: string
   workspaceMembers: any[]
-  workspaceGroups: any[]
   activeMemberIds: string[]
-  activeGroupIds: string[]
 }
 
-export function SettingsForm({ project, workspaceId, workspaceMembers, workspaceGroups, activeMemberIds, activeGroupIds }: Props) {
+export function SettingsForm({ project, workspaceId, workspaceMembers, activeMemberIds }: Props) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,11 +55,6 @@ export function SettingsForm({ project, workspaceId, workspaceMembers, workspace
     router.refresh(); setIsLoading(false)
   }
 
-  const handleToggleGroup = async (groupId: string, isCurrentlyMember: boolean) => {
-    setIsLoading(true)
-    await toggleProjectGroup(project.id, workspaceId, groupId, !isCurrentlyMember)
-    router.refresh(); setIsLoading(false)
-  }
 
   return (
     <div className="flex flex-col gap-8 pb-12">
@@ -151,23 +144,7 @@ export function SettingsForm({ project, workspaceId, workspaceMembers, workspace
                   <Users className="w-4 h-4 text-sona-neutral" /> Hozzáférések kezelése
                 </h3>
                 <div className="flex flex-col gap-6">
-                  {workspaceGroups.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-bold text-sona-neutral uppercase tracking-wider mb-2">Csoportok</h4>
-                      <div className="flex flex-col gap-2">
-                        {workspaceGroups.map(group => {
-                          const isAdded = activeGroupIds.includes(group.id)
-                          return (
-                            <div key={group.id} className="flex items-center justify-between p-3 bg-background border border-border rounded-lg">
-                              <span className="text-sm font-medium text-foreground">{group.name}</span>
-                              <button type="button" disabled={isLoading} onClick={() => handleToggleGroup(group.id, isAdded)} className={`px-3 py-1.5 text-xs font-bold uppercase rounded-md transition-colors ${isAdded ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}>{isAdded ? 'Eltávolítás' : 'Hozzáadás'}</button>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
+                  
                   <div>
                     <h4 className="text-xs font-bold text-sona-neutral uppercase tracking-wider mb-2">Egyéni munkatársak</h4>
                     <div className="flex flex-col gap-2">

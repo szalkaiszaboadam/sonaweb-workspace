@@ -42,19 +42,11 @@ const workspaceMembers: TeamMember[] = (wsUsers || []).map((u: any) => ({
 
   // 3. Projekt-specifikus hozzáférések (ha privát)
   let projectMemberIds: string[] = []
-  let projectGroups: any[] = []
 
   if (project.is_private) {
     const { data: pm } = await supabase.from('project_members').select('user_id').eq('project_id', projectId)
     projectMemberIds = pm?.map(m => m.user_id) || []
 
-    const { data: pg } = await supabase.from('project_groups').select('group_id').eq('project_id', projectId)
-    const groupIds = pg?.map(g => g.group_id) || []
-
-    if (groupIds.length > 0) {
-      const { data: wg } = await supabase.from('workspace_groups').select('id, name').in('id', groupIds)
-      projectGroups = wg || []
-    }
   }
 
   // 4. Szétválogatjuk a felhasználókat a megjelenítéshez
@@ -133,25 +125,6 @@ const workspaceMembers: TeamMember[] = (wsUsers || []).map((u: any) => ({
                       {owner.name || 'Ismeretlen'} {owner.user_id === user.id && '(Te)'}
                     </span>
                     <span className="text-xs text-sona-neutral truncate">{owner.email}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* CSOPORTOK (Csak ha privát és vannak meghívva) */}
-        {project.is_private && projectGroups.length > 0 && (
-          <section>
-            <h3 className="text-xs font-bold text-sona-neutral uppercase tracking-wider mb-3 px-1 flex items-center gap-2">
-              <Building2 className="w-4 h-4" /> Meghívott Csoportok
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {projectGroups.map(group => (
-                <div key={group.id} className="bg-surface border border-border rounded-xl p-4 flex items-center gap-4 border-l-2 border-l-primary">
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-semibold text-foreground truncate">{group.name}</span>
-                    <span className="text-xs text-sona-neutral">A csoport összes tagja hozzáfér</span>
                   </div>
                 </div>
               ))}

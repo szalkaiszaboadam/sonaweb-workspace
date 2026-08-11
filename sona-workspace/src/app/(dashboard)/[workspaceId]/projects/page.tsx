@@ -33,7 +33,6 @@ export default async function ProjectsPage(props: Props) {
   if (!workspace) redirect('/workspaces')
 
   const { data: workspaceMembersData } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
-  const { data: workspaceGroups } = await supabase.from('workspace_groups').select('*').eq('workspace_id', workspaceId)
   const { data: projects } = await supabase.from('projects').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false })
 
   return (
@@ -51,7 +50,6 @@ export default async function ProjectsPage(props: Props) {
         <CreateProjectModal 
           workspaceId={workspace.id} 
           workspaceMembers={workspaceMembersData || []}
-          workspaceGroups={workspaceGroups || []}
           currentUserId={user.id}
           autoOpen={autoOpenModal} 
         />
@@ -107,12 +105,11 @@ export default async function ProjectsPage(props: Props) {
             Ebben a munkaterületben még nem hoztál létre egyetlen projektet sem. Kezdd el most!
           </p>
           <CreateProjectModal 
-            workspaceId={workspace.id} 
-            workspaceMembers={workspaceMembersData || []}
-            workspaceGroups={workspaceGroups || []}
-            currentUserId={user.id}
-            autoOpen={autoOpenModal}
-          />
+          workspaceId={workspace.id} 
+          workspaceMembers={workspaceMembersData || []}
+          currentUserId={user.id}
+          autoOpen={autoOpenModal} 
+        />
         </div>
       )}
     </div>
