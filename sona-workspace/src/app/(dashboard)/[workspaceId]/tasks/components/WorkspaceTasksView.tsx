@@ -16,6 +16,8 @@ type Props = {
   members: { id: string, email: string, name: string, avatar_url?: string }[]
   workspaceId: string
   currentUserId: string
+  hasEditOthersPerm: boolean     // <-- ÚJ
+  hasDeleteOthersPerm: boolean   // <-- ÚJ
 }
 
 const COLUMNS = [
@@ -25,7 +27,7 @@ const COLUMNS = [
   { id: 'done', title: 'Kész', color: 'bg-green-500', iconColor: 'text-green-500' }
 ] as const
 
-export function WorkspaceTasksView({ initialTasks, members, workspaceId, currentUserId }: Props) {
+export function WorkspaceTasksView({ initialTasks, members, workspaceId, currentUserId, hasEditOthersPerm, hasDeleteOthersPerm }: Props) {  
   const router = useRouter()
   const [tasks, setTasks] = useState<WorkspaceTask[]>(initialTasks)
   const [showOnlyMine, setShowOnlyMine] = useState(false)
@@ -193,7 +195,7 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
         )}
       </div>
 
-      {/* ÚJRAHASZNOSÍTOTT MODAL */}
+{/* ÚJRAHASZNOSÍTOTT MODAL */}
       <TaskModal
         task={selectedTask}
         isOpen={isModalOpen}
@@ -204,6 +206,9 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
         }}
         onUpdate={handleTaskUpdate}
         onDelete={handleTaskDelete}
+        currentUserId={currentUserId}              
+        hasEditOthersPerm={hasEditOthersPerm}      
+        hasDeleteOthersPerm={hasDeleteOthersPerm} 
       />
 
     </div>

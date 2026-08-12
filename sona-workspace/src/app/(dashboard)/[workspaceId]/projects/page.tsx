@@ -4,6 +4,7 @@ import { CreateProjectModal } from './components/CreateProjectModal'
 import { Clock } from 'lucide-react'
 import Link from 'next/link'
 import { getProjectIcon, getProjectColor } from '@/lib/project-icons'
+import { checkPermission } from '@/lib/permissions' // <-- ÚJ IMPORT
 
 export const dynamic = 'force-dynamic'
 
@@ -22,8 +23,8 @@ type Props = {
 
 export default async function ProjectsPage(props: Props) {
   const { workspaceId } = await props.params
-  const searchParams = await props.searchParams // <- URL paraméterek lekérése
-  const autoOpenModal = searchParams?.newProject === 'true' // <- Megnézzük, igaz-e
+  const searchParams = await props.searchParams
+  const autoOpenModal = searchParams?.newProject === 'true'
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -34,6 +35,10 @@ export default async function ProjectsPage(props: Props) {
 
   const { data: workspaceMembersData } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
   const { data: projects } = await supabase.from('projects').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false })
+
+  // 🚀 AZ ÚJ JOGOSULTSÁG SZÁMÍTÓ LOGIKA:
+  const isOwner = workspaceMembersData?.find((m:any) => m.user_id === user.id)?.role === 'owner'
+  const canCreateProject = isOwner || await checkPermission(workspaceId, 'project:create')
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto w-full animate-in fade-in duration-500">
@@ -46,12 +51,13 @@ export default async function ProjectsPage(props: Props) {
           </p>
         </div>
         
-        {/* ÁTADJUK AZ autoOpen PARAMÉTERT */}
+        {/* ÁTADJUK A canCreate PROP-OT */}
         <CreateProjectModal 
           workspaceId={workspace.id} 
           workspaceMembers={workspaceMembersData || []}
           currentUserId={user.id}
-          autoOpen={autoOpenModal} 
+          autoOpen={autoOpenModal}
+          canCreate={canCreateProject} // <--- EZT!
         />
       </div>
 
@@ -108,7 +114,8 @@ export default async function ProjectsPage(props: Props) {
           workspaceId={workspace.id} 
           workspaceMembers={workspaceMembersData || []}
           currentUserId={user.id}
-          autoOpen={autoOpenModal} 
+          autoOpen={autoOpenModal}
+          canCreate={canCreateProject} // <--- EZT IS FRISSÍTSD AZ ÜRES ÁLLAPOTNÁL (kb. 96. sor)
         />
         </div>
       )}

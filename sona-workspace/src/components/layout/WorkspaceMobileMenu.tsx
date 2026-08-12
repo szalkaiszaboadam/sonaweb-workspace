@@ -3,21 +3,20 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Menu, X, LayoutDashboard, FolderKanban, CheckSquare, FileText, HardDrive, Timer, Users, Settings, Plus, ChevronsUpDown, Check } from 'lucide-react'
+import { Menu, X, LayoutDashboard, FolderKanban, CheckSquare, FileText, HardDrive, Timer, Users, Settings, Plus, ChevronsUpDown, Check, Lock } from 'lucide-react'
 
 type Workspace = { id: string, name: string }
 
 export function WorkspaceMobileMenu({
-  workspaceId, workspaceName, workspaces, userRole,
+  workspaceId, workspaceName, workspaces, canCreateProject, canManageSettings
 }: {
-  workspaceId: string, workspaceName: string, workspaces: Workspace[], userRole: string
+  workspaceId: string, workspaceName: string, workspaces: Workspace[], canCreateProject: boolean, canManageSettings: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false)
 
-  // Linkre kattintáskor bezárjuk
   useEffect(() => { setIsOpen(false); setIsSwitcherOpen(false) }, [pathname])
 
   const navItems = [
@@ -28,7 +27,7 @@ export function WorkspaceMobileMenu({
     { name: 'Fájlok', href: `/${workspaceId}/files`, icon: HardDrive },
     { name: 'Időkövetés', href: `/${workspaceId}/time`, icon: Timer },
     { name: 'Csapat', href: `/${workspaceId}/team`, icon: Users },
-    ...(userRole === 'owner' ? [{ name: 'Beállítások', href: `/${workspaceId}/settings`, icon: Settings }] : []),
+    ...(canManageSettings ? [{ name: 'Beállítások', href: `/${workspaceId}/settings`, icon: Settings }] : []),
   ]
 
   return (
@@ -58,21 +57,16 @@ export function WorkspaceMobileMenu({
                 <ChevronsUpDown className="w-4 h-4 text-sona-neutral shrink-0" />
               </button>
               
-              {isSwitcherOpen && (
-                <div className="absolute top-14 left-3 bg-surface border border-border shadow-2xl rounded-xl z-50 py-1.5 w-[calc(100%-24px)] max-h-48 overflow-y-auto">
-                  <div className="px-3 py-2 text-[10px] font-bold text-sona-neutral uppercase tracking-wider">Munkaterületek</div>
-                  {workspaces.map(ws => (
-                    <button key={ws.id} onClick={() => { setIsSwitcherOpen(false); router.push(`/${ws.id}/overview`) }} className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-sona-neutral/10 font-medium">
-                      <span className="truncate">{ws.name}</span>
-                      {ws.id === workspaceId && <Check className="w-4 h-4 text-primary shrink-0" />}
-                    </button>
-                  ))}
+              {/* LAKATOS MOBIL GOMB */}
+              {canCreateProject ? (
+                <Link href={`/${workspaceId}/projects?newProject=true`} onClick={() => setIsOpen(false)} className="w-full flex items-center justify-center gap-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg py-2 text-sm font-bold shadow-sm px-3 mt-1">
+                  <Plus className="w-4 h-4 shrink-0" /> <span className="truncate">Új projekt</span>
+                </Link>
+              ) : (
+                <div className="w-full flex items-center justify-center gap-2 bg-surface border border-border text-sona-neutral/50 rounded-lg py-2 text-sm font-bold px-3 mt-1 cursor-not-allowed">
+                  <Lock className="w-4 h-4 shrink-0" /> <span className="truncate">Új projekt</span>
                 </div>
               )}
-              
-              <Link href={`/${workspaceId}/projects?newProject=true`} onClick={() => setIsOpen(false)} className="w-full flex items-center justify-center gap-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg py-2 text-sm font-bold shadow-sm px-3">
-                <Plus className="w-4 h-4 shrink-0" /> <span className="truncate">Új projekt</span>
-              </Link>
             </div>
 
             <div className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">

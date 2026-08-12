@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound, redirect } from 'next/navigation'
 import { SettingsForm } from '../../components/SettingsForm'
+import { checkPermission } from '@/lib/permissions' // <-- ÚJ IMPORT
 
 export default async function ProjectSettingsPage({
   params 
@@ -10,23 +11,32 @@ export default async function ProjectSettingsPage({
   const { workspaceId, projectId } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) redirect('/login')
 
-  // 1. Projekt lekérése
   const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).single()
   if (!project) notFound()
 
-  // 2. KÖTELEZŐ VÉDELEM: Be is engedhetjük ide?
   const { data: memberData } = await supabase.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', user.id).single()
-  const isManager = memberData?.role === 'owner' || project.user_id === user.id
+
+// 🚀 AZ ÚJ JOGOSULTSÁG SZÁMÍTÓ LOGIKA:
+  const isWorkspaceOwner = memberData?.role === 'owner'
+  const isProjectCreator = project.user_id === user.id
   
+  const hasEdit = await checkPermission(workspaceId, 'project:edit')
+  const hasDelete = await checkPermission(workspaceId, 'project:delete')
+  const hasAccess = await checkPermission(workspaceId, 'project:manage_access')
+
+  const isManager = isWorkspaceOwner || isProjectCreator || hasEdit || hasDelete || hasAccess
+
+  // Ha BÁRMELYIK feltétel teljesül, bent maradhat. Ha egyik sem, kidobjuk!
   if (!isManager) {
-    redirect(`/${workspaceId}/projects/${projectId}`) // Ha valahogy URL-ből bejutna, visszadobjuk!
+    redirect(`/${workspaceId}/projects/${projectId}`) 
   }
 
-  // 3. Adatok lekérése a meghívásokhoz
   const { data: workspaceMembersData } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
   const { data: projectMembers } = await supabase.from('project_members').select('user_id').eq('project_id', projectId)
+
   return (
     <div className="max-w-3xl animate-in fade-in duration-500">
       <div className="mb-6">

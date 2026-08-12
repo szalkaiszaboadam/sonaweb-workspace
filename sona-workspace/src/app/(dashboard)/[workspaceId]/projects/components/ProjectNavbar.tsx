@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, CheckSquare, FileText, HardDrive, Settings, Timer, Users, ChevronDown } from 'lucide-react'
+import { LayoutDashboard, CheckSquare, FileText, HardDrive, Settings, Timer, Users, ChevronDown, Lock } from 'lucide-react'
 
 export function ProjectNavbar({ workspaceId, projectId, isManager }: { workspaceId: string, projectId: string, isManager: boolean }) {
   const pathname = usePathname()
@@ -12,14 +12,15 @@ export function ProjectNavbar({ workspaceId, projectId, isManager }: { workspace
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null) // ÚJ: Referencia a menühöz
 
-  const navItems = [
+const navItems = [
     { name: 'Áttekintés', href: baseUrl, exact: true, icon: LayoutDashboard },
     { name: 'Feladatok', href: `${baseUrl}/tasks`, exact: false, icon: CheckSquare },
     { name: 'Dokumentumok', href: `${baseUrl}/documents`, exact: false, icon: FileText },
     { name: 'Fájlok', href: `${baseUrl}/files`, exact: false, icon: HardDrive },
     { name: 'Időkövetés', href: `${baseUrl}/time`, exact: false, icon: Timer },
     { name: 'Csapat', href: `${baseUrl}/team`, exact: false, icon: Users },
-    ...(isManager ? [{ name: 'Beállítások', href: `${baseUrl}/settings`, exact: false, icon: Settings }] : []),
+    // Lakat beállítása!
+    { name: 'Beállítások', href: `${baseUrl}/settings`, exact: false, icon: Settings, locked: !isManager },
   ]
 
   const activeItem = navItems.find(item => item.exact ? pathname === item.href : pathname.startsWith(item.href)) || navItems[0]
@@ -66,10 +67,22 @@ export function ProjectNavbar({ workspaceId, projectId, isManager }: { workspace
         {isMobileMenuOpen && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-surface border border-border rounded-xl shadow-lg z-50 py-1.5 overflow-hidden animate-in slide-in-from-top-2 duration-200">
             {navItems.map((item) => {
-              const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href)
-              const Icon = item.icon
-              return (
-                <Link
+          const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href)
+          const Icon = item.icon
+
+          // 🔒 LAKATOLT KAPSZULA GOMB
+          if (item.locked) {
+            return (
+              <div key={item.name} title="Nincs jogosultságod" className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-sona-neutral/40 cursor-not-allowed select-none whitespace-nowrap">
+                <Lock className="w-4 h-4 opacity-40" strokeWidth={2} />
+                {item.name}
+              </div>
+            )
+          }
+
+          // NORMÁL KAPSZULA GOMB
+          return (
+            <Link
                   key={item.name}
                   href={item.href}
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -94,6 +107,17 @@ export function ProjectNavbar({ workspaceId, projectId, isManager }: { workspace
           const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href)
           const Icon = item.icon
 
+          // 🔒 LAKATOLT KAPSZULA GOMB
+          if (item.locked) {
+            return (
+              <div key={item.name} title="Nincs jogosultságod" className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-sona-neutral/40 cursor-not-allowed select-none whitespace-nowrap">
+                <Lock className="w-4 h-4 opacity-40" strokeWidth={2} />
+                {item.name}
+              </div>
+            )
+          }
+
+          // NORMÁL KAPSZULA GOMB
           return (
             <Link
               key={item.name}

@@ -13,10 +13,11 @@ type Props = {
   workspaceId: string
   workspaceMembers: any[]
   currentUserId: string
-  autoOpen?: boolean // <- Új opcionális paraméter
+  autoOpen?: boolean 
+  canCreate?: boolean
 }
 
-export function CreateProjectModal({ workspaceId, workspaceMembers, currentUserId, autoOpen = false }: Props) {
+export function CreateProjectModal({ workspaceId, workspaceMembers, currentUserId, autoOpen = false, canCreate = false }: Props) {
   const router = useRouter()
   const pathname = usePathname() // Lekérjük az aktuális tiszta útvonalat
   
@@ -67,6 +68,17 @@ export function CreateProjectModal({ workspaceId, workspaceMembers, currentUserI
     }
   }
 
+// 🚀 VIZUÁLIS VÉDELEM MEGJELENÍTÉSE
+  if (!canCreate) {
+    return (
+      <Button type="button" disabled variant="secondary" className="flex items-center gap-2 opacity-50 cursor-not-allowed" title="Nincs jogosultságod">
+        <Lock className="w-4 h-4 text-sona-neutral" />
+        <span className="text-sona-neutral">Új Projekt</span>
+      </Button>
+    )
+  }
+
+  // Ha van joga, megjelenítjük a normál, kattintható gombot:
   return (
     <>
       <Button onClick={() => setIsOpen(true)} className="flex items-center gap-2">

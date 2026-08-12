@@ -12,6 +12,9 @@ type Props = {
     initialTasks: Task[]
     workspaceId: string
     projectId: string
+    currentUserId: string          // <-- ÚJ
+    hasEditOthersPerm: boolean     // <-- ÚJ
+    hasDeleteOthersPerm: boolean   // <-- ÚJ
 }
 
 const COLUMNS = [
@@ -21,7 +24,7 @@ const COLUMNS = [
     { id: 'done', title: 'Kész', color: 'bg-green-500' }
 ] as const
 
-export function TaskManager({ initialTasks, workspaceId, projectId }: Props) {
+export function TaskManager({ initialTasks, workspaceId, projectId, currentUserId, hasEditOthersPerm, hasDeleteOthersPerm }: Props) {
     const router = useRouter()
 
     const [tasks, setTasks] = useState<Task[]>(initialTasks)
@@ -508,13 +511,16 @@ export function TaskManager({ initialTasks, workspaceId, projectId }: Props) {
             <TaskModal
                 task={selectedTask}
                 isOpen={isModalOpen}
-                workspaceId={workspaceId} 
+                workspaceId={workspaceId}
                 onClose={() => {
                     setIsModalOpen(false)
-                    setTimeout(() => setSelectedTask(null), 200) // Kicsit várunk a bezárási animációra
+                    setTimeout(() => setSelectedTask(null), 200)
                 }}
                 onUpdate={handleTaskUpdate}
                 onDelete={handleTaskDelete}
+                currentUserId={currentUserId}             
+                hasEditOthersPerm={hasEditOthersPerm}      
+                hasDeleteOthersPerm={hasDeleteOthersPerm}  
             />
         </div>
     )

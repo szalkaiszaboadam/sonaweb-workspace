@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MoreVertical, Edit2, Trash2, AlertTriangle } from 'lucide-react'
+import { MoreVertical, Edit2, Trash2, AlertTriangle, Lock } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -62,12 +62,26 @@ export function ProjectActions({ project, isManager }: { project: Project, isMan
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)} />
           <div className="absolute top-full right-0 mt-1 w-40 bg-surface border border-border shadow-lg rounded-md z-50 py-1 overflow-hidden">
-            <button onClick={() => { setIsMenuOpen(false); setIsEditModalOpen(true) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-sona-neutral/10 transition-colors text-foreground">
-              <Edit2 className="w-4 h-4" /> Szerkesztés
-            </button>
-            <button onClick={() => { setIsMenuOpen(false); setIsDeleteModalOpen(true) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-red-500/10 hover:text-red-500 transition-colors text-red-500/90">
-              <Trash2 className="w-4 h-4" /> Törlés
-            </button>
+            {isManager ? (
+              <>
+                <button onClick={() => { setIsMenuOpen(false); setIsEditModalOpen(true) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-sona-neutral/10 transition-colors text-foreground">
+                  <Edit2 className="w-4 h-4" /> Szerkesztés
+                </button>
+                <button onClick={() => { setIsMenuOpen(false); setIsDeleteModalOpen(true) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-red-500/10 hover:text-red-500 transition-colors text-red-500/90">
+                  <Trash2 className="w-4 h-4" /> Törlés
+                </button>
+              </>
+            ) : (
+              <>
+                {/* 🔒 LAKATOLT GOMBOK */}
+                <div className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-sona-neutral/40 cursor-not-allowed" title="Nincs jogosultságod">
+                  <Lock className="w-4 h-4" /> Szerkesztés
+                </div>
+                <div className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-sona-neutral/40 cursor-not-allowed" title="Nincs jogosultságod">
+                  <Lock className="w-4 h-4" /> Törlés
+                </div>
+              </>
+            )}
           </div>
         </>
       )}

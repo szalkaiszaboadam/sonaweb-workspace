@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { WorkspacePermission } from './permissions.constants'
 
-// Továbbexportáljuk a konstansokat, hogy a korábbi szerveres importok ne törjenek el
 export * from './permissions.constants'
 
 export async function checkPermission(workspaceId: string, permission: WorkspacePermission) {
@@ -9,13 +8,41 @@ export async function checkPermission(workspaceId: string, permission: Workspace
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 
-  const { data: hasPermission } = await supabase.rpc('has_workspace_permission', {
-    p_workspace_id: workspaceId,
-    p_user_id: user.id,
-    p_permission: permission
-  })
+  // 1. TAG LEKÉRÉSE
+  const { data: member } = await supabase
+    .from('workspace_members')
+    .select('id, role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user.id)
+    .single()
 
-  return !!hasPermission
+  if (!member) return false
+
+  // 1. RÉTEG: OWNER (Isteni mód) - Mindent szabad!
+  if (member.role === 'owner') return true
+
+  // 2. RÉTEG: EGYÉNI FELÜLBÍRÁLÁS (Overrides)
+  const { data: override } = await supabase
+    .from('member_permission_overrides')
+    .select('is_granted')
+    .eq('member_id', member.id)
+    .eq('permission', permission)
+    .single()
+
+  if (override && override.is_granted) return true
+
+  // 3. RÉTEG: SZEREPKÖRÖK (Roles)
+  const { data: rolePerms } = await supabase
+    .from('member_roles')
+    .select('roles!inner(role_permissions(permission))')
+    .eq('member_id', member.id)
+
+  // Megnézzük, hogy a tag bármelyik kiosztott szerepköre tartalmazza-e ezt a jogot
+  const hasRolePerm = rolePerms?.some((mr: any) =>
+    mr.roles.role_permissions.some((rp: any) => rp.permission === permission)
+  )
+
+  return !!hasRolePerm
 }
 
 export async function requirePermission(workspaceId: string, permission: WorkspacePermission) {

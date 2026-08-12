@@ -3,33 +3,40 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { checkPermission, requirePermission } from '@/lib/permissions'
+import { WorkspacePermission } from '@/lib/permissions.constants'
 
 // ==========================================
-// KÖZPONTI JOGOSULTSÁG ELLENŐRZŐ (Projekt szint)
+// KÖZPONTI JOGOSULTSÁG ELLENŐRZŐ SEGÉDEK
 // ==========================================
-async function verifyProjectManager(supabase: any, workspaceId: string, projectId: string, userId: string) {
+
+async function isWorkspaceOwner(supabase: any, workspaceId: string, userId: string) {
+  const { data } = await supabase.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', userId).single()
+  return data?.role === 'owner'
+}
+
+async function canManageProject(supabase: any, workspaceId: string, projectId: string, userId: string, requiredPerm: WorkspacePermission) {
+  if (await isWorkspaceOwner(supabase, workspaceId, userId)) return true
   const { data: project } = await supabase.from('projects').select('user_id').eq('id', projectId).single()
   if (project?.user_id === userId) return true // A projekt létrehozója
-  
-  const { data: member } = await supabase.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', userId).single()
-  if (member?.role === 'owner') return true // Munkaterület tulajdonos
-  
-  // Ha nem owner és nem létrehozó, megnézzük a központi RBAC rendszert!
-  const hasPerm = await checkPermission(workspaceId, 'project:manage_all')
-  return hasPerm
+  return await checkPermission(workspaceId, requiredPerm)
 }
 
 // ==========================================
 // PROJEKTEK KEZELÉSE
 // ==========================================
+
 export async function createProject(formData: FormData) {
   const workspace_id = formData.get('workspace_id') as string
-  try { await requirePermission(workspace_id, 'project:create') } 
-  catch (e: any) { return { error: e.message } }
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
+
+  // Jogosultság ellenőrzés: Tulajdonos VAGY project:create jog
+  const isOwner = await isWorkspaceOwner(supabase, workspace_id, user.id)
+  if (!isOwner) {
+    const hasPerm = await checkPermission(workspace_id, 'project:create')
+    if (!hasPerm) return { error: 'Nincs jogosultságod projektet létrehozni!' }
+  }
 
   const name = formData.get('name') as string
   const description = formData.get('description') as string
@@ -46,10 +53,9 @@ export async function createProject(formData: FormData) {
 
   if (error || !project) return { error: 'Hiba történt a létrehozás során.' }
 
-if (is_private && memberIds.length > 0) {
+  if (is_private && memberIds.length > 0) {
     const membersToInsert = memberIds.map((id: string) => ({ project_id: project.id, user_id: id }))
     await supabase.from('project_members').insert(membersToInsert)
-    // TÖRÖLVE: groupsToInsert
   }
 
   revalidatePath('/', 'layout')
@@ -72,8 +78,8 @@ export async function updateProject(formData: FormData) {
 
   if (!name || name.trim() === '') return { error: 'A projekt nevének megadása kötelező.' }
 
-  const isManager = await verifyProjectManager(supabase, workspace_id, id, user.id)
-  if (!isManager) return { error: 'Nincs jogosultságod módosítani ezt a projektet!' }
+  const hasAccess = await canManageProject(supabase, workspace_id, id, user.id, 'project:edit')
+  if (!hasAccess) return { error: 'Nincs jogosultságod szerkeszteni ezt a projektet!' }
 
   const { error } = await supabase.from('projects').update({ name, description, is_private, status, emoji, color }).eq('id', id)
   if (error) return { error: 'Hiba történt a módosítás során.' }
@@ -87,8 +93,8 @@ export async function updateProjectStatus(projectId: string, workspaceId: string
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
-  if (!isManager) return { error: 'Csak a projektvezetők állíthatnak státuszt!' }
+  const hasAccess = await canManageProject(supabase, workspaceId, projectId, user.id, 'project:edit')
+  if (!hasAccess) return { error: 'Nincs jogosultságod a státusz átállításához!' }
 
   const { error } = await supabase.from('projects').update({ status }).eq('id', projectId)
   if (error) return { error: 'Hiba történt a módosítás során.' }
@@ -102,14 +108,14 @@ export async function deleteProject(projectId: string, workspaceId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
-  if (!isManager) return { error: 'Nincs jogosultságod törölni ezt a projektet!' }
+  const hasAccess = await canManageProject(supabase, workspaceId, projectId, user.id, 'project:delete')
+  if (!hasAccess) return { error: 'Nincs jogosultságod törölni ezt a projektet!' }
 
+  // Fájlok törlése a storage-ból
   const [{ data: tasks }, { data: docs }] = await Promise.all([
     supabase.from('tasks').select('id').eq('project_id', projectId),
     supabase.from('documents').select('id').eq('project_id', projectId)
   ])
-
   const taskIds = tasks?.map(t => t.id) || []
   const docIds = docs?.map(d => d.id) || []
   const orQuery = []
@@ -136,8 +142,8 @@ export async function toggleProjectMember(projectId: string, workspaceId: string
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs bejelentkezve.' }
 
-  const isManager = await verifyProjectManager(supabase, workspaceId, projectId, user.id)
-  if (!isManager) return { error: 'Nincs jogosultságod tagokat kezelni!' }
+  const hasAccess = await canManageProject(supabase, workspaceId, projectId, user.id, 'project:manage_access')
+  if (!hasAccess) return { error: 'Nincs jogosultságod a projekt tagjainak kezeléséhez!' }
 
   if (isMember) {
     const { error } = await supabase.from('project_members').insert({ project_id: projectId, user_id: targetUserId })
@@ -149,16 +155,14 @@ export async function toggleProjectMember(projectId: string, workspaceId: string
   return { success: true }
 }
 
-
-
 // ==========================================
 // FELADATOK (TASKS)
 // ==========================================
+
 export async function getTasks(projectId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { tasks: [] }
-
   const { data, error } = await supabase.from('tasks').select('*').eq('project_id', projectId).order('position', { ascending: true })
   if (error) return { tasks: [] }
   return { tasks: data }
@@ -170,6 +174,7 @@ export async function createTask(workspaceId: string, projectId: string, title: 
   if (!user) return { error: 'Nincs jogosultságod.' }
   if (!title || title.trim() === '') return { error: 'A feladat neve kötelező.' }
 
+  // ALAPJOG: Bárki létrehozhat feladatot, ha hozzáfér a projekthez!
   const { data, error } = await supabase.from('tasks').insert({
     workspace_id: workspaceId, project_id: projectId, title: title.trim(), status: status, user_id: user.id
   }).select().single()
@@ -179,19 +184,24 @@ export async function createTask(workspaceId: string, projectId: string, title: 
 }
 
 export async function updateTaskStatus(taskId: string, newStatus: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Nincs jogosultságod.' }
-
-  const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId)
-  if (error) return { error: 'Nem sikerült frissíteni a feladatot.' }
-  return { success: true }
+  return await updateTaskDetails(taskId, { status: newStatus })
 }
 
 export async function updateTaskDetails(taskId: string, updates: any) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
+
+  const { data: task } = await supabase.from('tasks').select('user_id, assignee_id, workspace_id').eq('id', taskId).single()
+  if (!task) return { error: 'Feladat nem található.' }
+
+  // HA NEM Ő HOZTA LÉTRE ÉS NEM Ő A FELELŐS -> RBAC ellenőrzés
+  if (task.user_id !== user.id && task.assignee_id !== user.id) {
+    const isOwner = await isWorkspaceOwner(supabase, task.workspace_id, user.id)
+    if (!isOwner && !(await checkPermission(task.workspace_id, 'task:edit_others'))) {
+      return { error: 'Nincs jogosultságod mások feladatát módosítani!' }
+    }
+  }
 
   const { error } = await supabase.from('tasks').update(updates).eq('id', taskId)
   if (error) return { error: 'Nem sikerült menteni a részleteket.' }
@@ -202,6 +212,17 @@ export async function updateTaskOrders(updates: { id: string; status: string; po
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
+
+  // Egyszerűsítés: Feltételezzük, hogy ha az elsőt mozgathatja, a többit is.
+  if (updates.length > 0) {
+    const { data: task } = await supabase.from('tasks').select('user_id, assignee_id, workspace_id').eq('id', updates[0].id).single()
+    if (task && task.user_id !== user.id && task.assignee_id !== user.id) {
+      const isOwner = await isWorkspaceOwner(supabase, task.workspace_id, user.id)
+      if (!isOwner && !(await checkPermission(task.workspace_id, 'task:edit_others'))) {
+        return { error: 'Nincs jogosultságod mások feladatát átrendezni!' }
+      }
+    }
+  }
 
   const promises = updates.map(update => supabase.from('tasks').update({ status: update.status, position: update.position }).eq('id', update.id))
   try {
@@ -221,8 +242,10 @@ export async function deleteTask(taskId: string) {
   if (!task) return { error: 'Feladat nem található.' }
 
   if (task.user_id !== user.id) {
-    const hasPerm = await checkPermission(task.workspace_id, 'task:manage_all')
-    if (!hasPerm) return { error: 'Nincs jogosultságod mások feladatát törölni.' }
+    const isOwner = await isWorkspaceOwner(supabase, task.workspace_id, user.id)
+    if (!isOwner && !(await checkPermission(task.workspace_id, 'task:delete'))) {
+      return { error: 'Nincs jogosultságod mások feladatát törölni!' }
+    }
   }
 
   const { data: attachments } = await supabase.from('attachments').select('file_url').eq('task_id', taskId)
@@ -239,6 +262,7 @@ export async function deleteTask(taskId: string) {
 // ==========================================
 // DOKUMENTUMOK
 // ==========================================
+
 export async function getDocuments(projectId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase.from('documents').select('*').eq('project_id', projectId).order('updated_at', { ascending: false })
@@ -251,6 +275,7 @@ export async function createDocument(projectId: string, title: string, folderNam
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
+  // ALAPJOG: Bárki létrehozhat dokumentumot
   const { data, error } = await supabase.from('documents')
     .insert([{ project_id: projectId, user_id: user.id, title, content: '', folder_name: folderName }])
     .select().single()
@@ -264,6 +289,18 @@ export async function updateDocument(documentId: string, updates: { title?: stri
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
+  const { data: doc } = await supabase.from('documents').select('user_id, projects!inner(workspace_id)').eq('id', documentId).single()
+  if (!doc) return { error: 'Dokumentum nem található.' }
+
+  if (doc.user_id !== user.id) {
+    // @ts-ignore
+    const wsId = doc.projects.workspace_id
+    const isOwner = await isWorkspaceOwner(supabase, wsId, user.id)
+    if (!isOwner && !(await checkPermission(wsId, 'document:edit_others'))) {
+      return { error: 'Nincs jogosultságod mások dokumentumát szerkeszteni!' }
+    }
+  }
+
   const { error } = await supabase.from('documents').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', documentId)
   if (error) return { error: 'Hiba a mentéskor.' }
   return { success: true }
@@ -274,15 +311,15 @@ export async function deleteDocument(documentId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const { data: doc } = await supabase.from('documents').select('user_id, projects(workspace_id)').eq('id', documentId).single()
+  const { data: doc } = await supabase.from('documents').select('user_id, projects!inner(workspace_id)').eq('id', documentId).single()
   if (!doc) return { error: 'Dokumentum nem található.' }
 
   if (doc.user_id !== user.id) {
     // @ts-ignore
-    const wsId = doc.projects?.workspace_id
-    if (wsId) {
-      const hasPerm = await checkPermission(wsId, 'document:manage_all')
-      if (!hasPerm) return { error: 'Nincs jogosultságod mások dokumentumát törölni.' }
+    const wsId = doc.projects.workspace_id
+    const isOwner = await isWorkspaceOwner(supabase, wsId, user.id)
+    if (!isOwner && !(await checkPermission(wsId, 'document:delete'))) {
+      return { error: 'Nincs jogosultságod mások dokumentumát törölni!' }
     }
   }
 
@@ -311,21 +348,21 @@ export async function updateDocumentOrders(updates: { id: string; folder_name: s
 // ==========================================
 // KOMMENTEK
 // ==========================================
+
 export async function getComments(targetType: 'task' | 'document', targetId: string) {
   const supabase = await createClient()
   const column = targetType === 'task' ? 'task_id' : 'document_id'
-
   const { data, error } = await supabase.from('comments').select('*').eq(column, targetId).order('created_at', { ascending: true })
   if (error) return { comments: [] }
 
   const { data: { user } } = await supabase.auth.getUser()
-
   let wsId = null;
+
   if (targetType === 'task') {
       const { data: tData } = await supabase.from('tasks').select('workspace_id').eq('id', targetId).single()
       wsId = tData?.workspace_id
   } else {
-      const { data: dData } = await supabase.from('documents').select('projects(workspace_id)').eq('id', targetId).single()
+      const { data: dData } = await supabase.from('documents').select('projects!inner(workspace_id)').eq('id', targetId).single()
       // @ts-ignore
       wsId = dData?.projects?.workspace_id
   }
@@ -358,12 +395,13 @@ export async function addComment(targetType: 'task' | 'document', targetId: stri
 
   const column = targetType === 'task' ? 'task_id' : 'document_id'
   const { data, error } = await supabase.from('comments').insert([{ [column]: targetId, user_id: user.id, content }]).select().single()
+  
   if (error) return { error: 'Hiba a kommenteléskor.' }
 
   const commentWithUser = {
     ...data,
     user: { 
-        email: user.email,
+        email: user.email, 
         name: user.user_metadata?.name || user.email?.split('@')[0],
         avatar_url: user.user_metadata?.avatar_url
     }
@@ -376,7 +414,7 @@ export async function deleteComment(id: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod' }
-  // A biztonság kedvéért itt rákötjük a user_id-t is, így csak a sajátját törölheti
+  // Biztonság: Csak a sajátját törölheti
   await supabase.from('comments').delete().eq('id', id).eq('user_id', user.id)
   return { success: true }
 }
@@ -384,6 +422,7 @@ export async function deleteComment(id: string) {
 // ==========================================
 // FÁJLOK ÉS CSATOLMÁNYOK
 // ==========================================
+
 export async function getAttachments(targetType: 'task' | 'document', targetId: string) {
   const supabase = await createClient()
   const column = targetType === 'task' ? 'task_id' : 'document_id'
@@ -422,6 +461,19 @@ export async function deleteAttachment(id: string, fileName: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod' }
 
+  const { data: attachment } = await supabase.from('attachments').select('user_id, tasks(workspace_id), documents(projects(workspace_id))').eq('id', id).single()
+  
+  if (attachment && attachment.user_id !== user.id) {
+    // @ts-ignore
+    const wsId = attachment.tasks?.workspace_id || attachment.documents?.projects?.workspace_id
+    if (wsId) {
+      const isOwner = await isWorkspaceOwner(supabase, wsId, user.id)
+      if (!isOwner && !(await checkPermission(wsId, 'file:delete'))) {
+        return { error: 'Nincs jogosultságod mások fájljait törölni!' }
+      }
+    }
+  }
+
   await supabase.storage.from('project_files').remove([fileName])
   await supabase.from('attachments').delete().eq('id', id)
   return { success: true }
@@ -433,6 +485,7 @@ export async function getProjectFiles(projectId: string) {
     supabase.from('tasks').select('id').eq('project_id', projectId),
     supabase.from('documents').select('id').eq('project_id', projectId)
   ])
+
   const taskIds = tasks?.map(t => t.id) || []
   const docIds = docs?.map(d => d.id) || []
   if (taskIds.length === 0 && docIds.length === 0) return { files: [] }
@@ -449,12 +502,13 @@ export async function getWorkspaceFiles(workspaceId: string) {
   const supabase = await createClient()
   const { data: projects } = await supabase.from('projects').select('id').eq('workspace_id', workspaceId)
   if (!projects || projects.length === 0) return { files: [] }
-  const projectIds = projects.map(p => p.id)
 
+  const projectIds = projects.map(p => p.id)
   const [{ data: tasks }, { data: docs }] = await Promise.all([
     supabase.from('tasks').select('id').in('project_id', projectIds),
     supabase.from('documents').select('id').in('project_id', projectIds)
   ])
+
   const taskIds = tasks?.map(t => t.id) || []
   const docIds = docs?.map(d => d.id) || []
   if (taskIds.length === 0 && docIds.length === 0) return { files: [] }
@@ -470,7 +524,6 @@ export async function getWorkspaceFiles(workspaceId: string) {
 export async function getWorkspaceMembers(workspaceId: string) {
   const supabase = await createClient()
   const { data: { user: currentUser } } = await supabase.auth.getUser()
-
   const { data: members } = await supabase.rpc('get_workspace_users', { ws_id: workspaceId })
   if (!members) return { members: [] }
 
@@ -484,6 +537,7 @@ export async function getWorkspaceMembers(workspaceId: string) {
 // ==========================================
 // IDŐKÖVETÉS
 // ==========================================
+
 export async function addTimeEntry(workspaceId: string, projectId: string | null, description: string, date: string, durationMinutes: number, taskId: string | null = null) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -508,12 +562,14 @@ export async function updateTimeEntry(entryId: string, updates: any) {
   if (!entry) return { error: 'Bejegyzés nem található.' }
 
   if (entry.user_id !== user.id) {
-    const hasPerm = await checkPermission(entry.workspace_id, 'time:manage_all')
-    if (!hasPerm) return { error: 'Csak a saját időbejegyzésedet szerkesztheted!' }
+    const isOwner = await isWorkspaceOwner(supabase, entry.workspace_id, user.id)
+    if (!isOwner && !(await checkPermission(entry.workspace_id, 'time:edit_others'))) {
+      return { error: 'Csak a saját időbejegyzésedet szerkesztheted!' }
+    }
   }
 
   if (updates.description !== undefined && !updates.description.trim()) updates.description = 'Névtelen munka'
-
+  
   const { error } = await supabase.from('time_entries').update(updates).eq('id', entryId)
   if (error) return { error: 'Nem sikerült frissíteni a bejegyzést.' }
   return { success: true }
@@ -528,8 +584,10 @@ export async function deleteTimeEntry(entryId: string) {
   if (!entry) return { error: 'Bejegyzés nem található.' }
 
   if (entry.user_id !== user.id) {
-    const hasPerm = await checkPermission(entry.workspace_id, 'time:manage_all')
-    if (!hasPerm) return { error: 'Csak a saját időbejegyzésedet törölheted!' }
+    const isOwner = await isWorkspaceOwner(supabase, entry.workspace_id, user.id)
+    if (!isOwner && !(await checkPermission(entry.workspace_id, 'time:delete_others'))) {
+      return { error: 'Csak a saját időbejegyzésedet törölheted!' }
+    }
   }
 
   const { error } = await supabase.from('time_entries').delete().eq('id', entryId)
