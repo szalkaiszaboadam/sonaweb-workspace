@@ -395,7 +395,7 @@ function Nav({ theme, onToggle }: { theme: ThemeName; onToggle: () => void }) {
         <div className="hidden items-center gap-3 lg:flex">
           <ThemeToggle theme={theme} onToggle={onToggle} />
           <a
-            href="#login"
+            href="/login"
             className="text-[14px] font-semibold transition-colors hover:opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4"
             style={{ color: "var(--fg)", outlineColor: "var(--accent)" }}
           >
@@ -447,7 +447,7 @@ function Nav({ theme, onToggle }: { theme: ThemeName; onToggle: () => void }) {
                 </a>
               ))}
               <div className="mt-2 flex items-center gap-3 px-3">
-                <a href="#login" className="text-[14px] font-semibold" style={{ color: "var(--fg)" }}>
+                <a href="/login" className="text-[14px] font-semibold" style={{ color: "var(--fg)" }}>
                   Bejelentkezés
                 </a>
                 <a
