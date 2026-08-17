@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link' // <-- EZ HIÁNYZOTT AZ ELŐBB!
 import { WorkspaceSidebar } from '@/components/layout/WorkspaceSidebar'
 import { TopNavbar } from '@/components/layout/TopNavbar'
 import { WorkspaceMobileMenu } from '@/components/layout/WorkspaceMobileMenu'
-import { Search, Bell, HelpCircle, Bug } from 'lucide-react'
-import { checkPermission } from '@/lib/permissions' // <-- ÚJ IMPORT
+import { Search, Bell, LifeBuoy, Bug } from 'lucide-react'
+import { checkPermission } from '@/lib/permissions'
 
 type MembershipData = {
   workspace_id: string
@@ -45,16 +46,15 @@ export default async function WorkspaceLayout({
 
   const currentWorkspaceName = allWorkspaces.find(ws => ws.id === workspaceId)?.name || 'Munkaterület'
 
-// 🚀 AZ ÚJ JOGOSULTSÁG SZÁMÍTÓ LOGIKA:
   const isOwner = userRole === 'owner'
   const canCreateProject = isOwner || await checkPermission(workspaceId, 'project:create')
   
   const hasWorkspaceSettings = await checkPermission(workspaceId, 'workspace:settings')
-  const hasTeamManage = await checkPermission(workspaceId, 'member:manage') // <-- A KULCS ÁTÍRVA: member:manage lett!
-  const hasRolesManage = await checkPermission(workspaceId, 'role:manage')  // <-- A KULCS ÁTÍRVA: role:manage lett!
+  const hasTeamManage = await checkPermission(workspaceId, 'member:manage')
+  const hasRolesManage = await checkPermission(workspaceId, 'role:manage')
 
   const canManageSettings = isOwner || hasWorkspaceSettings || hasTeamManage || hasRolesManage
-  
+
   return (
     <div className="flex flex-col h-screen w-full bg-background overflow-hidden">
       <TopNavbar
@@ -66,8 +66,8 @@ export default async function WorkspaceLayout({
             workspaceId={workspaceId}
             workspaceName={currentWorkspaceName}
             workspaces={allWorkspaces}
-            canCreateProject={canCreateProject} // Passzoljuk le!
-            canManageSettings={canManageSettings} // Passzoljuk le!
+            canCreateProject={canCreateProject}
+            canManageSettings={canManageSettings}
           />
         }
         centerContent={
@@ -86,9 +86,24 @@ export default async function WorkspaceLayout({
               <Bell className="w-5 h-5" />
               <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-surface" />
             </button>
-            <button className="hidden sm:block p-2 text-sona-neutral hover:bg-sona-neutral/10 hover:text-foreground rounded-lg transition-colors" title="Súgó"><HelpCircle className="w-5 h-5" /></button>
-            <button className="hidden sm:block p-2 text-sona-neutral hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-colors" title="Hibabejelentés"><Bug className="w-5 h-5" /></button>
-            <button className="sm:hidden p-2 text-sona-neutral hover:bg-sona-neutral/10 hover:text-foreground rounded-lg transition-colors" title="Keresés"><Search className="w-5 h-5" /></button>
+            
+            {/* 🚀 SÚGÓ GOMB */}
+            <Link 
+              href={`/${workspaceId}/help`}
+              className="hidden sm:block p-2 text-sona-neutral hover:bg-sona-neutral/10 hover:text-foreground rounded-lg transition-colors"
+              title="Súgó és Tudásbázis"
+            >
+              <LifeBuoy className="w-5 h-5" />
+            </Link>
+
+            {/* 🚀 HIBABEJELENTÉS GOMB */}
+            <Link 
+              href={`/${workspaceId}/report`}
+              className="hidden sm:block p-2 text-sona-neutral hover:bg-sona-neutral/10 hover:text-foreground rounded-lg transition-colors"
+              title="Hibabejelentés"
+            >
+              <Bug className="w-5 h-5" />
+            </Link>
           </div>
         }
       />
@@ -98,8 +113,8 @@ export default async function WorkspaceLayout({
           currentWorkspaceId={workspaceId}
           currentWorkspaceName={currentWorkspaceName}
           workspaces={allWorkspaces}
-          canCreateProject={canCreateProject} // Passzoljuk le!
-          canManageSettings={canManageSettings} // Passzoljuk le!
+          canCreateProject={canCreateProject}
+          canManageSettings={canManageSettings}
         />
         <main className="flex-1 overflow-y-auto relative">
           <div className="p-4 sm:p-6 md:p-8 max-w-6xl mx-auto">

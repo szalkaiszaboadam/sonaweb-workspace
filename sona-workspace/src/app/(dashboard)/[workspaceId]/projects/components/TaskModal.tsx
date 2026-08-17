@@ -1,20 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Modal } from '@/components/ui/Modal'
+import { X, Calendar, AlignLeft, CheckSquare, Plus, Trash2, Clock, Check, Flag, User, Shield } from 'lucide-react'
+import { updateTaskDetails } from '../actions'
 import { Button } from '@/components/ui/Button'
-import { updateTaskDetails, deleteTask, getWorkspaceMembers } from '../actions'
-import { Trash2, AlignLeft, Calendar, Clock, Flag, CheckSquare, Plus, X, Users, Paperclip } from 'lucide-react'
 import { RichTextEditor } from '@/components/ui/RichTextEditor'
-import { CommentSection } from './CommentSection'
 import { AttachmentSection } from './AttachmentSection'
-import { SelectDropdown } from '@/components/ui/SelectDropdown'
-
-export type Subtask = {
-    id: string
-    title: string
-    completed: boolean
-}
+import { CommentSection } from './CommentSection'
 
 export type Task = {
     id: string
@@ -26,9 +18,12 @@ export type Task = {
     estimated_hours: number | null
     description?: string | null
     priority: 'low' | 'medium' | 'high' | 'urgent'
-    subtasks?: Subtask[] | null 
-    assignee_id?: string | null
-    user_id?: string // <-- ÚJ: Hogy tudjuk, ki hozta létre!
+    subtasks?: any[] | null 
+    user_id?: string 
+    assignees?: string[]
+    participants?: string[]
+    assignee_roles?: string[]
+    participant_roles?: string[]
 }
 
 type Props = {
@@ -38,139 +33,115 @@ type Props = {
     onClose: () => void
     onUpdate: (updatedTask: Task) => void
     onDelete: (taskId: string) => void
-    currentUserId: string          // <-- ÚJ
-    hasEditOthersPerm: boolean     // <-- ÚJ
-    hasDeleteOthersPerm: boolean   // <-- ÚJ
+    currentUserId: string          
+    currentUserRoleIds: string[]   
+    hasEditOthersPerm: boolean     
+    hasDeleteOthersPerm: boolean   
+    members: any[]                 
+    roles: any[]                   
 }
 
-export function TaskModal({ task, workspaceId, isOpen, onClose, onUpdate, onDelete, currentUserId, hasEditOthersPerm, hasDeleteOthersPerm }: Props) {  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+// 🚀 ÚJ: EGYEDI MULTI-SELECT KOMPONENS SZEMÉLYEKHEZ ÉS SZEREPKÖRÖKHÖZ
+function AssignmentSelector({ label, selectedUsers, setSelectedUsers, selectedRoles, setSelectedRoles, members, roles, disabled }: any) {
+    const [isOpen, setIsOpen] = useState(false)
+    return (
+        <div className="relative flex-1">
+            <label className="text-sm font-semibold text-foreground flex items-center gap-2 mb-1.5">{label}</label>
+            <div onClick={() => !disabled && setIsOpen(true)} className={`min-h-[42px] p-2 border rounded-xl flex flex-wrap gap-1.5 items-center bg-background transition-colors ${disabled ? 'opacity-70 pointer-events-none border-border' : 'cursor-pointer hover:border-primary/50 border-border'}`}>
+                {selectedUsers.length === 0 && selectedRoles.length === 0 && (
+                    <span className="text-sm text-sona-neutral px-1 font-medium">Kattints a választáshoz...</span>
+                )}
+                {selectedUsers.map((uid: string) => {
+                    const u = members.find((m: any) => m.user_id === uid)
+                    return <div key={uid} className="flex items-center gap-1.5 bg-sona-neutral/10 px-2.5 py-1 rounded-md text-xs font-semibold text-foreground shadow-sm"><User className="w-3 h-3 text-sona-neutral"/> {u?.name || u?.email}</div>
+                })}
+                {selectedRoles.map((rid: string) => {
+                    const r = roles.find((r: any) => r.id === rid)
+                    return <div key={rid} className="flex items-center gap-1.5 bg-primary/10 text-primary px-2.5 py-1 rounded-md text-xs font-bold shadow-sm"><Shield className="w-3 h-3"/> {r?.name}</div>
+                })}
+            </div>
+            
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+                    <div className="absolute top-full left-0 w-72 mt-2 bg-surface border border-border shadow-xl rounded-2xl z-50 p-3 max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-2">
+                        
+                        <div className="text-[10px] font-bold text-sona-neutral uppercase tracking-wider mb-2 px-2">Személyek</div>
+                        {members.length === 0 && <span className="text-xs text-sona-neutral px-2">Nincsenek tagok.</span>}
+                        {members.map((m: any) => (
+                            <label key={m.user_id} className="flex items-center gap-3 p-2 hover:bg-sona-neutral/5 rounded-xl cursor-pointer transition-colors">
+                                <input type="checkbox" checked={selectedUsers.includes(m.user_id)} onChange={(e) => {
+                                    if (e.target.checked) setSelectedUsers([...selectedUsers, m.user_id])
+                                    else setSelectedUsers(selectedUsers.filter((id: string) => id !== m.user_id))
+                                }} className="w-4 h-4 rounded border-sona-neutral/30 text-primary focus:ring-primary/50 bg-background" />
+                                <span className="text-sm font-semibold text-foreground truncate">{m.name || m.email}</span>
+                            </label>
+                        ))}
 
-  // 🚀 AZ ÚJ FELADAT SZINTŰ JOGOSULTSÁG-KALKULÁTOR
-    const isCreator = task?.user_id === currentUserId
-    const isAssignee = task?.assignee_id === currentUserId
-    const canEdit = isCreator || isAssignee || hasEditOthersPerm
-    const canDelete = isCreator || hasDeleteOthersPerm
+                        <div className="text-[10px] font-bold text-sona-neutral uppercase tracking-wider mt-5 mb-2 px-2">Szerepkörök</div>
+                        {roles.length === 0 && <span className="text-xs text-sona-neutral px-2">Nincsenek szerepkörök.</span>}
+                        {roles.map((r: any) => (
+                            <label key={r.id} className="flex items-center gap-3 p-2 hover:bg-sona-neutral/5 rounded-xl cursor-pointer transition-colors">
+                                <input type="checkbox" checked={selectedRoles.includes(r.id)} onChange={(e) => {
+                                    if (e.target.checked) setSelectedRoles([...selectedRoles, r.id])
+                                    else setSelectedRoles(selectedRoles.filter((id: string) => id !== r.id))
+                                }} className="w-4 h-4 rounded border-sona-neutral/30 text-primary focus:ring-primary/50 bg-background" />
+                                <span className="text-sm font-bold text-foreground truncate">{r.name}</span>
+                            </label>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    )
+}
 
-  // -- ALAP ADATOK --
-  const [title, setTitle] = useState('')
+
+export function TaskModal({ task, workspaceId, isOpen, onClose, onUpdate, onDelete, currentUserId, currentUserRoleIds, hasEditOthersPerm, hasDeleteOthersPerm, members, roles }: Props) {
+  
+  const [title, setTitle] = useState(task?.title || '')
+  const [descriptionContent, setDescriptionContent] = useState(task?.description || '')
+  const [status, setStatus] = useState(task?.status || 'todo')
+  const [priority, setPriority] = useState<Task['priority']>(task?.priority || 'medium')
+  const [startDate, setStartDate] = useState(task?.start_date || '')
+  const [dueDate, setDueDate] = useState(task?.due_date || '')
+  const [estimatedHours, setEstimatedHours] = useState(task?.estimated_hours?.toString() || '')
+  const [subtasks, setSubtasks] = useState<any[]>(task?.subtasks || [])
+  
+  // 🚀 ÚJ ÁLLAPOTOK A TÖMBÖKHÖZ
+  const [assignees, setAssignees] = useState<string[]>([])
+  const [participants, setParticipants] = useState<string[]>([])
+  const [assigneeRoles, setAssigneeRoles] = useState<string[]>([])
+  const [participantRoles, setParticipantRoles] = useState<string[]>([])
+
   const [isEditingTitle, setIsEditingTitle] = useState(false)
-  const [descriptionContent, setDescriptionContent] = useState('')
-  const [subtasks, setSubtasks] = useState<Subtask[]>([])
-  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null)
-  
-  // -- META ADATOK --
-  const [priority, setPriority] = useState<Task['priority']>('medium')
-  const [startDate, setStartDate] = useState<string>('')
-  const [dueDate, setDueDate] = useState<string>('')
-  const [estimatedHours, setEstimatedHours] = useState<string>('')
-
-  // -- DINAMIKUS MEGJELENÍTÉS ÁLLAPOTOK --
-  const [showStartDate, setShowStartDate] = useState(false)
-  const [showDueDate, setShowDueDate] = useState(false)
-  const [showEstHours, setShowEstHours] = useState(false)
-
-  // -- UI ÁLLAPOTOK --
-  const [isEditingDesc, setIsEditingDesc] = useState(false)
-  const [isDescExpanded, setIsDescExpanded] = useState(false)
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
-  const [isAddingSubtask, setIsAddingSubtask] = useState(false)
-  const [members, setMembers] = useState<any[]>([])
+  const [isEditingDesc, setIsEditingDesc] = useState(!task?.description)
+  const [isLoading, setIsLoading] = useState(false)
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
-  
   const addMenuRef = useRef<HTMLDivElement>(null)
-  const [prevTaskId, setPrevTaskId] = useState<string | null>(null)
-
-  // ==========================================
-  // SPLIT PANE (OKOS BÖNGÉSZŐS MEMÓRIÁVAL)
-  // ==========================================
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [leftWidth, setLeftWidth] = useState(60) // Alap: 60% bal, 40% jobb
-  const leftWidthRef = useRef(60) // Ref a pontos mentéshez húzás után
-  const [isDragging, setIsDragging] = useState(false)
-  const [isDesktop, setIsDesktop] = useState(true)
-
-  // 1. Betöltéskor kiolvassuk az elmentett méretet a böngészőből
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedWidth = localStorage.getItem('sona-task-modal-width')
-      if (savedWidth) {
-        setLeftWidth(parseFloat(savedWidth))
-        leftWidthRef.current = parseFloat(savedWidth)
-      }
-    }
-  }, [])
-
-  // 2. Szinkronban tartjuk a ref-et, hogy az egér elengedésekor jó adatot mentsünk
-  useEffect(() => {
-    leftWidthRef.current = leftWidth
-  }, [leftWidth])
-
-  // Képernyőméret figyelése (Mobilon ne legyen osztott nézet)
-  useEffect(() => {
-    const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
-    if (typeof window !== 'undefined') {
-      setIsDesktop(window.innerWidth >= 1024)
-      window.addEventListener('resize', handleResize)
-    }
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  // Húzóka logikája
-  const startResizing = (e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging || !containerRef.current) return
-      
-      const containerRect = containerRef.current.getBoundingClientRect()
-      const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
-      
-      // Szigorított korlátok: Bal oldal minimum 45%, maximum 70%
-      if (newLeftWidth >= 45 && newLeftWidth <= 70) {
-        setLeftWidth(newLeftWidth)
-      }
+    if (task) {
+      setTitle(task.title)
+      setDescriptionContent(task.description || '')
+      setStatus(task.status)
+      setPriority(task.priority)
+      setStartDate(task.start_date || '')
+      setDueDate(task.due_date || '')
+      setEstimatedHours(task.estimated_hours?.toString() || '')
+      setSubtasks(task.subtasks || [])
+      setIsEditingDesc(!task.description)
+      // TÖMBÖK INICIALIZÁLÁSA
+      setAssignees(task.assignees || [])
+      setParticipants(task.participants || [])
+      setAssigneeRoles(task.assignee_roles || [])
+      setParticipantRoles(task.participant_roles || [])
     }
-
-    const handleMouseUp = () => {
-      setIsDragging(false)
-      // 3. Amikor elengedjük a vonalat, elmentjük a böngészőbe a friss szélességet!
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('sona-task-modal-width', leftWidthRef.current.toString())
-      }
-    }
-
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-    } else {
-      document.body.style.cursor = 'default'
-      document.body.style.userSelect = 'auto'
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = 'default'
-      document.body.style.userSelect = 'auto'
-    }
-  }, [isDragging])
-
-  // ==========================================
-
-  const formatDateForInput = (dateString: string | null) => {
-    if (!dateString) return ''
-    return new Date(dateString).toISOString().split('T')[0]
-  }
+  }, [task])
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
         setIsAddMenuOpen(false)
       }
     }
@@ -178,337 +149,243 @@ export function TaskModal({ task, workspaceId, isOpen, onClose, onUpdate, onDele
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  useEffect(() => {
-    if (isOpen && workspaceId) {
-      getWorkspaceMembers(workspaceId).then(({ members: data }) => {
-        if (data) setMembers(data)
-      })
-    }
-  }, [isOpen, workspaceId])
+  if (!isOpen || !task) return null
 
-  if (task && task.id !== prevTaskId) {
-    setPrevTaskId(task.id)
-    setTitle(task.title || '')
-    setDescriptionContent(task.description || '')
-    setSubtasks(task.subtasks || [])
-    setSelectedAssignee(task.assignee_id || null)
-    setPriority(task.priority)
-    
-    setStartDate(formatDateForInput(task.start_date))
-    setDueDate(formatDateForInput(task.due_date))
-    setEstimatedHours(task.estimated_hours ? task.estimated_hours.toString() : '')
-
-    setShowStartDate(!!task.start_date)
-    setShowDueDate(!!task.due_date)
-    setShowEstHours(!!task.estimated_hours)
-
-    setIsEditingTitle(false)
-    setIsEditingDesc(false)
-    setIsDescExpanded(false)
-    setIsAddingSubtask(false)
-    setIsAddMenuOpen(false)
-    // FIGYELEM: Innen kivettem a setLeftWidth(60)-at, így a megnyitáskor MEGTARTJA a te mentett szélességedet!
-  }
-
-  if (!task) return null
-
-  const handleAddSubtask = () => {
-      if (!newSubtaskTitle.trim()) return
-      const newSubtask: Subtask = {
-          id: Math.random().toString(36).substring(2, 9),
-          title: newSubtaskTitle,
-          completed: false
-      }
-      setSubtasks([...subtasks, newSubtask])
-      setNewSubtaskTitle('')
-  }
-  const toggleSubtask = (id: string) => setSubtasks(subtasks.map(st => st.id === id ? { ...st, completed: !st.completed } : st))
-  const removeSubtask = (id: string) => setSubtasks(subtasks.filter(st => st.id !== id))
+  // 🚀 AZ ÚJ FELADAT SZINTŰ JOGOSULTSÁG-KALKULÁTOR
+  const isCreator = task.user_id === currentUserId
+  const isDirect = task.assignees?.includes(currentUserId) || task.participants?.includes(currentUserId)
+  const hasRole = task.assignee_roles?.some(r => currentUserRoleIds.includes(r)) || task.participant_roles?.some(r => currentUserRoleIds.includes(r))
   
-  const completedSubtasks = subtasks.filter(st => st.completed).length
-  const progressPercentage = subtasks.length === 0 ? 0 : Math.round((completedSubtasks / subtasks.length) * 100)
+  const canEdit = isCreator || isDirect || hasRole || hasEditOthersPerm
+  const canDelete = isCreator || hasDeleteOthersPerm
 
   const handleSave = async () => {
-      setIsLoading(true)
-      setError(null)
+    setIsLoading(true)
+    const updates = {
+      title,
+      description: descriptionContent,
+      status,
+      priority,
+      start_date: startDate || null,
+      due_date: dueDate || null,
+      estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
+      subtasks,
+      // ELKÜLDJÜK A TÖMBÖKET MENTÉSRE
+      assignees,
+      participants,
+      assignee_roles: assigneeRoles,
+      participant_roles: participantRoles
+    }
 
-      const updates = {
-          title: title || 'Névtelen feladat', 
-          description: descriptionContent, 
-          start_date: showStartDate && startDate ? startDate : null,
-          due_date: showDueDate && dueDate ? dueDate : null,
-          estimated_hours: showEstHours && estimatedHours ? parseFloat(estimatedHours) : null,
-          priority,
-          assignee_id: selectedAssignee,
-          subtasks 
-      }
-
-      const result = await updateTaskDetails(task.id, updates)
-
-      if (result.error) {
-          setError(result.error)
-          setIsLoading(false)
-      } else {
-          onUpdate({ ...task, ...updates } as Task)
-          setIsLoading(false)
-          onClose()
-      }
+    const result = await updateTaskDetails(task.id, updates)
+    setIsLoading(false)
+    if (result.error) alert(result.error)
+    else {
+      onUpdate({ ...task, ...updates })
+      onClose()
+    }
   }
 
-  const handleDelete = async () => {
-      if (!confirm('Biztosan véglegesen törlöd ezt a feladatot?')) return
-      setIsLoading(true)
-      const result = await deleteTask(task.id)
-      if (result.error) setError(result.error)
-      else { onDelete(task.id); onClose() }
-      setIsLoading(false)
+  const handleDelete = () => {
+    if (confirm('Biztosan törlöd ezt a feladatot?')) onDelete(task.id)
+  }
+
+  const addSubtask = () => {
+    setSubtasks([...subtasks, { id: crypto.randomUUID(), title: 'Új részfeladat', completed: false }])
+    setIsAddMenuOpen(false)
+  }
+
+  const toggleSubtask = (id: string) => {
+    setSubtasks(subtasks.map(st => st.id === id ? { ...st, completed: !st.completed } : st))
+  }
+
+  const removeSubtask = (id: string) => {
+    setSubtasks(subtasks.filter(st => st.id !== id))
   }
 
   return (
-    <Modal 
-      isOpen={isOpen} 
-      onClose={onClose} 
-      title="Feladat részletei"
-      className="max-w-6xl w-full"
-    >
-      <div className="flex flex-col h-[85vh] overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-4xl max-h-[90vh] bg-surface rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-border animate-in zoom-in-95 duration-200">
         
-{/* FEJLÉC */}
-        <div className="shrink-0 pb-2 flex items-start justify-between gap-6">
-          <div className="flex-1 min-w-0 flex items-center h-12">
-            {isEditingTitle ? (
-              <input
-                autoFocus
-                type="text"
-                value={title} 
-                onChange={e => setTitle(e.target.value)}
-                onBlur={() => setIsEditingTitle(false)} 
-                onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)}
-                className="w-full text-3xl font-bold bg-background border border-primary px-3 py-1.5 rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/20 shadow-sm transition-all"
-                placeholder="Feladat neve..."
-              />
-            ) : (
-              <h2 
-                // 🔒 CSAK AKKOR ENGEDJÜK KATTINTANI, HA SZERKESZTHETI!
-                onClick={() => { if(canEdit) setIsEditingTitle(true) }}
-                className={`text-3xl font-bold text-foreground px-3 py-1.5 rounded-lg transition-colors border border-transparent truncate -ml-3 ${canEdit ? 'cursor-pointer hover:bg-sona-neutral/10 hover:border-border' : ''}`}
-                title={canEdit ? "Kattints a szerkesztéshez" : ""}
-              >
-                {title || 'Névtelen feladat'}
-              </h2>
-            )}
-          </div>
-        </div>
+        {/* FEJLÉC */}
+        <div className="shrink-0 p-6 sm:p-8 border-b border-border bg-surface flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex-1 min-w-0 flex items-center h-12">
+              {isEditingTitle ? (
+                <div className="flex items-center gap-2 w-full">
+                  <input autoFocus type="text" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') setIsEditingTitle(false) }} onBlur={() => setIsEditingTitle(false)} className="flex-1 text-2xl font-bold bg-background border border-primary px-3 py-1.5 rounded-lg focus:outline-none" />
+                  <button type="button" onClick={() => setIsEditingTitle(false)} className="text-green-600 shrink-0 bg-green-500/10 p-2 rounded-lg hover:bg-green-500/20"><Check className="w-5 h-5" /></button>
+                </div>
+              ) : (
+                <h2 
+                  onClick={() => { if(canEdit) setIsEditingTitle(true) }}
+                  className={`text-2xl sm:text-3xl font-bold text-foreground px-3 py-1.5 rounded-lg transition-colors border border-transparent truncate -ml-3 ${canEdit ? 'cursor-pointer hover:bg-sona-neutral/10 hover:border-border' : ''}`}
+                  title={canEdit ? "Kattints a szerkesztéshez" : ""}
+                >
+                  {title || 'Névtelen feladat'}
+                </h2>
+              )}
+            </div>
 
-        {/* GÖRGETHETŐ TARTALOM (SPLIT PANE) */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden mt-2" ref={containerRef}>
-          
-          {/* --- BAL OSZLOP (Munkatér) --- */}
-          <div 
-            className="h-full overflow-y-auto pr-0 lg:pr-2 pb-10 w-full flex-shrink-0"
-            style={{ width: isDesktop ? `${leftWidth}%` : '100%' }}
-          >
-            <div className="flex flex-col gap-6">
-              
-              {/* VEZÉRLŐSÁV */}
-              <div className="flex flex-wrap items-center gap-3 pb-2">
-                {canEdit && (
+            <div className="flex items-center gap-2 shrink-0">
+              {canEdit && (
                 <div className="relative inline-block" ref={addMenuRef}>
-                  <button type="button" onClick={() => setIsAddMenuOpen(!isAddMenuOpen)} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-foreground bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors">
+                  <button type="button" onClick={() => setIsAddMenuOpen(!isAddMenuOpen)} className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-foreground bg-primary/10 text-primary hover:bg-primary/20 rounded-xl transition-colors shadow-sm">
                     <Plus className="w-4 h-4" /> Hozzáadás...
                   </button>
-
                   {isAddMenuOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-surface border border-border rounded-xl shadow-xl z-50 p-1.5 flex flex-col animate-in fade-in slide-in-from-top-2 duration-150">
-                      <button type="button" onClick={() => { setIsAddingSubtask(true); setIsAddMenuOpen(false) }} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-foreground hover:bg-sona-neutral/10 rounded-md text-left transition-colors">
+                    <div className="absolute right-0 mt-2 w-48 bg-surface rounded-xl shadow-xl border border-border py-1 z-10 animate-in fade-in slide-in-from-top-2">
+                      <button type="button" onClick={addSubtask} className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-sona-neutral/10 flex items-center gap-2 font-medium">
                         <CheckSquare className="w-4 h-4 text-sona-neutral" /> Részfeladat
                       </button>
-                      <button type="button" onClick={() => { setIsAddMenuOpen(false); const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement; if (fileInput) fileInput.click(); }} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-foreground hover:bg-sona-neutral/10 rounded-md text-left transition-colors">
-                        <Paperclip className="w-4 h-4 text-sona-neutral" /> Fájl csatolása
-                      </button>
-
-                      {(!showStartDate || !showDueDate || !showEstHours) && <div className="h-px bg-border my-1.5 mx-2" />}
-
-                      {!showStartDate && (
-                        <button type="button" onClick={() => { setShowStartDate(true); setIsAddMenuOpen(false) }} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-foreground hover:bg-sona-neutral/10 rounded-md text-left transition-colors">
-                          <Calendar className="w-4 h-4 text-sona-neutral" /> Kezdés dátuma
-                        </button>
-                      )}
-                      {!showDueDate && (
-                        <button type="button" onClick={() => { setShowDueDate(true); setIsAddMenuOpen(false) }} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-foreground hover:bg-sona-neutral/10 rounded-md text-left transition-colors">
-                          <Calendar className="w-4 h-4 text-sona-neutral text-red-400" /> Határidő
-                        </button>
-                      )}
-                      {!showEstHours && (
-                        <button type="button" onClick={() => { setShowEstHours(true); setIsAddMenuOpen(false) }} className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-foreground hover:bg-sona-neutral/10 rounded-md text-left transition-colors">
-                          <Clock className="w-4 h-4 text-sona-neutral" /> Becsült idő
-                        </button>
-                      )}
-                      
                     </div>
                   )}
-                  
-                </div>
-                )}
-
-                <div className={`w-48 ${!canEdit ? 'opacity-70 pointer-events-none' : ''}`}>
-                  <SelectDropdown value={selectedAssignee} onChange={(val) => setSelectedAssignee(val)} placeholder="Felelős..." icon={<Users className="w-4 h-4" />} options={members.map(m => ({ id: m.user_id, label: m.email }))} />
-                </div>
-                
-                <div className={`flex items-center gap-2 bg-background border border-border px-3 py-1.5 rounded-md transition-colors ${canEdit ? 'hover:border-primary/50' : 'opacity-70'}`}>
-                  <Flag className="w-4 h-4 text-sona-neutral" />
-                  <select disabled={!canEdit} value={priority} onChange={(e) => setPriority(e.target.value as Task['priority'])} className="text-sm bg-transparent outline-none text-foreground font-medium cursor-pointer disabled:cursor-not-allowed">
-                     <option value="low">Alacsony</option>
-                    <option value="medium">Közepes</option>
-                    <option value="high">Magas</option>
-                    <option value="urgent">Sürgős ⚡</option>
-                  </select>
-                </div>
-
-                {showStartDate && (
-                  <div className="flex items-center gap-2 bg-background border border-border px-3 py-1.5 rounded-md hover:border-primary/50 transition-colors animate-in fade-in duration-200">
-                    <Calendar className="w-4 h-4 text-sona-neutral" />
-                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent text-xs font-medium outline-none text-foreground cursor-pointer" />
-                    <button type="button" onClick={() => { setStartDate(''); setShowStartDate(false) }} className="ml-1 text-sona-neutral hover:text-red-500"><X className="w-3 h-3"/></button>
-                  </div>
-                )}
-                {showDueDate && (
-                  <div className="flex items-center gap-2 bg-background border border-border px-3 py-1.5 rounded-md hover:border-primary/50 transition-colors animate-in fade-in duration-200">
-                    <Calendar className="w-4 h-4 text-sona-neutral text-red-400" />
-                    <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="bg-transparent text-xs font-medium outline-none text-foreground cursor-pointer" />
-                    <button type="button" onClick={() => { setDueDate(''); setShowDueDate(false) }} className="ml-1 text-sona-neutral hover:text-red-500"><X className="w-3 h-3"/></button>
-                  </div>
-                )}
-                {showEstHours && (
-                  <div className="flex items-center gap-2 bg-background border border-border px-3 py-1.5 rounded-md hover:border-primary/50 transition-colors animate-in fade-in duration-200">
-                    <Clock className="w-4 h-4 text-sona-neutral" />
-                    <input type="number" step="0.5" min="0" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} className="bg-transparent text-sm font-medium outline-none text-foreground w-12" placeholder="0h" />
-                    <button type="button" onClick={() => { setEstimatedHours(''); setShowEstHours(false) }} className="ml-1 text-sona-neutral hover:text-red-500"><X className="w-3 h-3"/></button>
-                  </div>
-                )}
-              </div>
-
-              {/* LEÍRÁS */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <AlignLeft className="w-5 h-5 text-sona-neutral" /> Leírás
-                  </label>
-                  {/* 🔒 CSAK AKKOR MUTATJUK A GOMBOT */}
-                  {!isEditingDesc && descriptionContent && canEdit && (
-                    <button type="button" onClick={() => setIsEditingDesc(true)} className="text-xs font-medium px-3 py-1.5 bg-sona-neutral/10 hover:bg-sona-neutral/20 text-foreground rounded-md transition-colors">Szerkesztés</button>
-                  )}
-                </div>
-
-
-                {isEditingDesc ? (
-                    <RichTextEditor key={task.id} content={descriptionContent} onChange={setDescriptionContent} editable={canEdit} />
-                ) : (
-                  <div onClick={() => { if (!descriptionContent && canEdit) setIsEditingDesc(true) }} className={`relative rounded-xl border border-transparent transition-colors ${!descriptionContent ? (canEdit ? 'bg-sona-neutral/5 cursor-pointer hover:border-border p-4 text-center border-dashed' : 'py-2') : 'p-0'}`}>
-                    {!descriptionContent ? (
-                      <p className="text-sm text-sona-neutral font-medium">{canEdit ? 'Nincs megadva leírás. Kattints ide a szerkesztéshez...' : 'Nincs megadva leírás.'}</p>
-                    ) : (
-                      <div className={`relative flex flex-col bg-background border border-border rounded-xl overflow-hidden transition-all duration-300 ${!isDescExpanded ? 'max-h-40' : 'max-h-max'}`}>
-                        <div className="text-sm p-5 [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4 [&_p]:mb-2 [&_a]:text-primary" dangerouslySetInnerHTML={{ __html: descriptionContent }} />
-                        {!isDescExpanded && (
-                          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background via-background/80 to-transparent flex items-end justify-center pb-2">
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setIsDescExpanded(true) }} className="text-xs font-bold text-foreground bg-surface border border-border px-5 py-2 rounded-full shadow-md hover:bg-sona-neutral/10 transition-colors">Mutass többet</button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {isDescExpanded && descriptionContent && (
-                       <button type="button" onClick={(e) => { e.stopPropagation(); setIsDescExpanded(false) }} className="mt-3 text-xs font-semibold text-sona-neutral hover:text-foreground transition-colors px-2 py-1 flex mx-auto">Mutass kevesebbet</button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* RÉSZFELADATOK */}
-              {(subtasks.length > 0 || isAddingSubtask) && (
-                <div className="flex flex-col gap-3 pt-2">
-                  <label className="text-lg font-semibold text-foreground flex items-center gap-2">
-                      <CheckSquare className="w-5 h-5 text-sona-neutral" /> Részfeladatok
-                      {subtasks.length > 0 && <span className="ml-auto text-sm font-medium px-2.5 py-0.5 bg-sona-neutral/10 rounded-full text-sona-neutral">{progressPercentage}% kész</span>}
-                  </label>
-                  
-                  {subtasks.length > 0 && (
-                    <div className="w-full bg-sona-neutral/20 h-2 rounded-full overflow-hidden mb-1">
-                      <div className="bg-primary h-full transition-all duration-500" style={{ width: `${progressPercentage}%` }} />
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-2">
-                    {subtasks.map((st) => (
-                      <div key={st.id} className="flex items-center gap-3 group p-2 hover:bg-sona-neutral/5 rounded-lg transition-colors border border-transparent hover:border-border">
-                        <input type="checkbox" disabled={!canEdit} checked={st.completed} onChange={() => toggleSubtask(st.id)} className="w-4 h-4 rounded border-sona-neutral/30 text-primary focus:ring-primary/50 bg-background cursor-pointer disabled:cursor-not-allowed" />
-                        <span className={`text-sm flex-1 ${st.completed ? 'line-through text-sona-neutral' : 'text-foreground font-medium'}`}>{st.title}</span>
-                        {/* 🔒 CSAK AKKOR MUTATJUK A KUKÁT */}
-                        {canEdit && (
-                          <button type="button" onClick={() => removeSubtask(st.id)} className="opacity-0 group-hover:opacity-100 p-1.5 text-sona-neutral hover:bg-red-500/10 hover:text-red-500 rounded-md transition-all"><X className="w-4 h-4" /></button>
-                        )}
-                      </div>
-                    ))}
-                    
-                    {isAddingSubtask && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <input autoFocus type="text" value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSubtask())} placeholder="Mit kell csinálni?" className="flex-1 text-sm bg-background border border-primary px-3 py-2 rounded-md focus:outline-none shadow-sm" />
-                        <Button type="button" onClick={handleAddSubtask} className="py-2 px-4 text-xs">Mentés</Button>
-                        <button type="button" onClick={() => setIsAddingSubtask(false)} className="p-2 text-sona-neutral hover:bg-sona-neutral/10 rounded-md"><X className="w-4 h-4" /></button>
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
-
-              {/* FÁJLOK */}
-              <div className="flex flex-col gap-2 pt-2">
-                <AttachmentSection targetType="task" targetId={task.id} />
-              </div>
-
+              <button type="button" onClick={onClose} className="p-2 text-sona-neutral hover:bg-sona-neutral/10 rounded-xl transition-colors">
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
-          {/* --- HÚZÓKA (SPLITTER) --- */}
-          <div 
-            className={`hidden lg:flex w-2 mx-1 cursor-col-resize hover:bg-primary/30 items-center justify-center rounded-full transition-colors flex-shrink-0 relative group z-10 ${isDragging ? 'bg-primary/30' : ''}`}
-            onMouseDown={startResizing}
-          >
-            <div className="absolute inset-y-0 -left-2 -right-2 z-10" />
-            <div className={`h-12 w-1 rounded-full transition-colors ${isDragging ? 'bg-primary' : 'bg-border group-hover:bg-primary/60'}`} />
-          </div>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-6">
+            <select disabled={!canEdit} value={status} onChange={(e) => setStatus(e.target.value)} className={`text-sm font-bold uppercase tracking-wider bg-transparent outline-none px-1 ${status === 'done' ? 'text-green-500' : status === 'in_progress' ? 'text-blue-500' : 'text-sona-neutral'} disabled:opacity-70 disabled:cursor-not-allowed`}>
+              <option value="todo">Tennivaló</option>
+              <option value="in_progress">Folyamatban</option>
+              <option value="review">Ellenőrzésre vár</option>
+              <option value="done">Kész</option>
+            </select>
 
-          {/* --- JOBB OSZLOP (Kommentek) --- */}
-          <div className="h-full overflow-y-auto pl-0 lg:pl-2 w-full flex-1 mt-6 lg:mt-0 pb-10">
-            <CommentSection targetType="task" targetId={task.id} />
+            <div className="w-px h-4 bg-border hidden sm:block" />
+
+            <div className={`flex items-center gap-2 bg-background border border-border px-3 py-1.5 rounded-lg transition-colors shadow-sm ${canEdit ? 'hover:border-primary/50' : 'opacity-70'}`}>
+              <Flag className={`w-4 h-4 ${priority === 'urgent' ? 'text-red-500' : priority === 'high' ? 'text-orange-500' : priority === 'medium' ? 'text-blue-500' : 'text-sona-neutral'}`} />
+              <select disabled={!canEdit} value={priority} onChange={(e) => setPriority(e.target.value as Task['priority'])} className="text-sm bg-transparent outline-none text-foreground font-bold cursor-pointer disabled:cursor-not-allowed">
+                <option value="low">Alacsony</option>
+                <option value="medium">Közepes</option>
+                <option value="high">Magas</option>
+                <option value="urgent">Sürgős</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {error && (
-          <div className="shrink-0 mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-sm rounded-lg">
-            {error}
-          </div>
-        )}
+        {/* TARTALOM GÖRGETHETŐ RÉSZE */}
+        <div className="flex-1 overflow-y-auto p-6 sm:p-8 flex flex-col lg:flex-row gap-8 sm:gap-12 bg-background">
+          
+          <div className="flex-1 flex flex-col gap-10 min-w-0">
+            
+            {/* 🚀 ÚJ: FELELŐSÖK ÉS RÉSZTVEVŐK MULTI-SELECT */}
+            <div className="flex flex-col sm:flex-row gap-6">
+              <AssignmentSelector 
+                label="Felelősök" 
+                selectedUsers={assignees} setSelectedUsers={setAssignees} 
+                selectedRoles={assigneeRoles} setSelectedRoles={setAssigneeRoles} 
+                members={members} roles={roles} disabled={!canEdit} 
+              />
+              <AssignmentSelector 
+                label="Résztvevők" 
+                selectedUsers={participants} setSelectedUsers={setParticipants} 
+                selectedRoles={participantRoles} setSelectedRoles={setParticipantRoles} 
+                members={members} roles={roles} disabled={!canEdit} 
+              />
+            </div>
 
-        {/* LÁBLÉC */}
-        <div className="shrink-0 pt-3 flex items-center justify-between mt-2 border-t border-border">
-          {/* Törlés gomb (Ha nincs joga, halvány és kattinthatatlan) */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <label className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <AlignLeft className="w-5 h-5 text-sona-neutral" /> Leírás
+                </label>
+                {!isEditingDesc && descriptionContent && canEdit && (
+                  <button type="button" onClick={() => setIsEditingDesc(true)} className="text-xs font-bold px-3 py-1.5 bg-sona-neutral/10 hover:bg-sona-neutral/20 text-foreground rounded-lg transition-colors">Szerkesztés</button>
+                )}
+              </div>
+
+              {isEditingDesc ? (
+                  <RichTextEditor key={task.id} content={descriptionContent} onChange={setDescriptionContent} editable={canEdit} />
+              ) : (
+                <div onClick={() => { if (!descriptionContent && canEdit) setIsEditingDesc(true) }} className={`relative rounded-xl border border-transparent transition-colors ${!descriptionContent ? (canEdit ? 'bg-sona-neutral/5 cursor-pointer hover:border-border p-6 text-center border-dashed' : 'py-2') : 'p-0'}`}>
+                  {!descriptionContent ? (
+                    <p className="text-sm text-sona-neutral font-medium">{canEdit ? 'Nincs megadva leírás. Kattints ide a szerkesztéshez...' : 'Nincs megadva leírás.'}</p>
+                  ) : (
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-surface p-4 rounded-xl border border-border" dangerouslySetInnerHTML={{ __html: descriptionContent }} />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {subtasks.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <label className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5 text-sona-neutral" /> Részfeladatok
+                </label>
+                <div className="flex flex-col gap-2">
+                  {subtasks.map((st) => (
+                    <div key={st.id} className="flex items-center gap-3 group p-3 bg-surface border border-border rounded-xl transition-colors hover:border-primary/50">
+                      <input type="checkbox" disabled={!canEdit} checked={st.completed} onChange={() => toggleSubtask(st.id)} className="w-5 h-5 rounded border-sona-neutral/30 text-primary focus:ring-primary/50 bg-background cursor-pointer disabled:cursor-not-allowed" />
+                      {canEdit ? (
+                        <input type="text" value={st.title} onChange={(e) => setSubtasks(subtasks.map(s => s.id === st.id ? { ...s, title: e.target.value } : s))} className={`flex-1 bg-transparent border-none focus:outline-none text-sm ${st.completed ? 'line-through text-sona-neutral' : 'text-foreground font-semibold'}`} />
+                      ) : (
+                         <span className={`text-sm flex-1 ${st.completed ? 'line-through text-sona-neutral' : 'text-foreground font-semibold'}`}>{st.title}</span>
+                      )}
+                      {canEdit && (
+                        <button type="button" onClick={() => removeSubtask(st.id)} className="opacity-0 group-hover:opacity-100 p-1.5 text-sona-neutral hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-all"><X className="w-4 h-4" /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <AttachmentSection targetType="task" targetId={task.id} />
+          </div>
+
+          {/* JOBB OLDALI SÁV: IDŐPONTOK ÉS KOMMENTEK */}
+          <div className="w-full lg:w-72 flex flex-col gap-8 shrink-0">
+            <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-5 shadow-sm">
+              <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Határidők & Idő</h3>
+              
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-sona-neutral flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Kezdés</label>
+                <input disabled={!canEdit} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full text-sm bg-background border border-border px-3 py-2 rounded-lg focus:outline-none focus:border-primary text-foreground disabled:opacity-70 font-medium" />
+              </div>
+              
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-sona-neutral flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Határidő</label>
+                <input disabled={!canEdit} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={`w-full text-sm bg-background border px-3 py-2 rounded-lg focus:outline-none text-foreground disabled:opacity-70 font-medium ${dueDate && new Date(dueDate) < new Date() && status !== 'done' ? 'border-red-500 text-red-500 focus:border-red-500' : 'border-border focus:border-primary'}`} />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-sona-neutral flex items-center gap-1.5"><Clock className="w-3 h-3" /> Becsült idő (óra)</label>
+                <input disabled={!canEdit} type="number" min="0" step="0.5" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} placeholder="pl. 4.5" className="w-full text-sm bg-background border border-border px-3 py-2 rounded-lg focus:outline-none focus:border-primary text-foreground disabled:opacity-70 font-medium" />
+              </div>
+            </div>
+
+            <CommentSection targetType="task" targetId={task.id} />
+          </div>
+
+        </div>
+
+        {/* LÁBLÉC: GOMBOK */}
+        <div className="shrink-0 p-4 sm:p-6 bg-surface border-t border-border flex items-center justify-between">
           {canDelete ? (
-            <button type="button" onClick={handleDelete} className="px-4 py-2 text-sm font-medium text-sona-neutral hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors flex items-center gap-2">
+            <button type="button" onClick={handleDelete} className="px-4 py-2 text-sm font-bold text-sona-neutral hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-colors flex items-center gap-2">
               <Trash2 className="w-4 h-4" /> Törlés
             </button>
           ) : (
-            <div className="px-4 py-2 text-sm font-medium text-sona-neutral/40 flex items-center gap-2 cursor-not-allowed" title="Nincs jogosultságod">
+            <div className="px-4 py-2 text-sm font-bold text-sona-neutral/40 flex items-center gap-2 cursor-not-allowed" title="Nincs jogosultságod">
               <Trash2 className="w-4 h-4" /> Törlés
             </div>
           )}
 
           <div className="flex items-center gap-3">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-sona-neutral hover:text-foreground transition-colors">
-              Bezárás
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-sona-neutral hover:text-foreground transition-colors">
+              Mégse
             </button>
             {canEdit && (
-              <Button type="button" onClick={handleSave} disabled={isLoading} className="py-2.5 px-6 font-medium shadow-md">
+              <Button type="button" onClick={handleSave} disabled={isLoading} className="py-2.5 px-6 font-bold shadow-md">
                 {isLoading ? 'Mentés...' : 'Mentés & Bezárás'}
               </Button>
             )}
@@ -516,6 +393,6 @@ export function TaskModal({ task, workspaceId, isOpen, onClose, onUpdate, onDele
         </div>
 
       </div>
-    </Modal>
+    </div>
   )
 }

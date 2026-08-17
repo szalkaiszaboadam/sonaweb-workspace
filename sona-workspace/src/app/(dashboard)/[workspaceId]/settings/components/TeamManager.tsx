@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { CustomRole } from './RolesManager'
-import { PERMISSION_DEFINITIONS } from '@/lib/permissions.constants'
+import { PERMISSION_DEFINITIONS, PERMISSION_GROUPS } from '@/lib/permissions.constants'
 
 type Member = {
   id: string
@@ -31,12 +31,7 @@ type Props = {
   availableRoles: CustomRole[]
 }
 
-const PERMISSION_GROUPS = [
-  { label: 'Munkaterület & Csapat', keys: ['workspace:settings', 'team:manage', 'roles:manage'] },
-  { label: 'Projektek & Menedzsment', keys: ['project:create', 'project:manage_all'] },
-  { label: 'Tartalom (Feladat & Doku)', keys: ['task:manage_all', 'document:manage_all'] },
-  { label: 'Időkövetés', keys: ['time:view_all', 'time:manage_all'] },
-]
+
 
 export function TeamManager({ workspaceId, members, currentUserId, currentUserRole, availableRoles }: Props) {
   const router = useRouter()

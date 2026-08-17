@@ -46,11 +46,15 @@ export default async function ProjectSettingsPage({
         </p>
       </div>
 
-      <SettingsForm 
+<SettingsForm 
         project={project} 
         workspaceId={workspaceId} 
         workspaceMembers={workspaceMembersData || []}
         activeMemberIds={projectMembers?.map(pm => pm.user_id) || []}
+        // 🚀 ÁTADJUK AZ ÚJ JOGOKAT AZ ŰRLAPNAK
+        canEdit={hasEdit || isWorkspaceOwner || isProjectCreator}
+        canManageAccess={hasAccess || isWorkspaceOwner || isProjectCreator}
+        canDelete={hasDelete || isWorkspaceOwner || isProjectCreator}
       />
     </div>
   )

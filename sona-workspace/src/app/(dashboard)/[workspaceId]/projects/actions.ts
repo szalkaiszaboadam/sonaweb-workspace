@@ -156,7 +156,53 @@ export async function toggleProjectMember(projectId: string, workspaceId: string
 }
 
 // ==========================================
-// FELADATOK (TASKS)
+// KÖZPONTI FELADAT JOGOSULTSÁG ELLENŐRZŐ
+// ==========================================
+async function canManageTask(supabase: any, workspaceId: string, task: any, userId: string, requiredPerm: WorkspacePermission) {
+  // 1. Ő hozta létre?
+  if (task.user_id === userId) return true
+
+  // 2. Közvetlen felelős vagy résztvevő? (Biztosítjuk, hogy a tömbök ne legyenek null-ok)
+  const assignees = task.assignees || []
+  const participants = task.participants || []
+  const isDirect = assignees.includes(userId) || participants.includes(userId)
+  if (isDirect) return true
+
+  // 3. Van olyan szerepköre, ami hozzá van rendelve a feladathoz?
+  const assigneeRoles = task.assignee_roles || []
+  const participantRoles = task.participant_roles || []
+  
+  if (assigneeRoles.length > 0 || participantRoles.length > 0) {
+    const { data: member } = await supabase
+      .from('workspace_members')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
+      .single()
+
+    if (member) {
+      const { data: mRoles } = await supabase
+        .from('member_roles')
+        .select('role_id')
+        .eq('member_id', member.id)
+
+      const roleIds = mRoles?.map((mr: any) => mr.role_id) || []
+      
+      const hasRole = assigneeRoles.some((r: string) => roleIds.includes(r)) || 
+                      participantRoles.some((r: string) => roleIds.includes(r))
+      if (hasRole) return true
+    }
+  }
+
+  // 4. Ha egyik sem, megnézzük, hogy Owner-e, vagy van-e globális extra joga (pl. task:edit_others)
+  const isOwner = await isWorkspaceOwner(supabase, workspaceId, userId)
+  if (isOwner) return true
+
+  return await checkPermission(workspaceId, requiredPerm)
+}
+
+// ==========================================
+// FELADATOK (TASKS) MŰVELETEK
 // ==========================================
 
 export async function getTasks(projectId: string) {
@@ -174,7 +220,6 @@ export async function createTask(workspaceId: string, projectId: string, title: 
   if (!user) return { error: 'Nincs jogosultságod.' }
   if (!title || title.trim() === '') return { error: 'A feladat neve kötelező.' }
 
-  // ALAPJOG: Bárki létrehozhat feladatot, ha hozzáfér a projekthez!
   const { data, error } = await supabase.from('tasks').insert({
     workspace_id: workspaceId, project_id: projectId, title: title.trim(), status: status, user_id: user.id
   }).select().single()
@@ -187,24 +232,40 @@ export async function updateTaskStatus(taskId: string, newStatus: string) {
   return await updateTaskDetails(taskId, { status: newStatus })
 }
 
+
 export async function updateTaskDetails(taskId: string, updates: any) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const { data: task } = await supabase.from('tasks').select('user_id, assignee_id, workspace_id').eq('id', taskId).single()
+  // Hozzáadtuk a "fetchError"-t, hogy lássuk, ha az adatbázis panaszkodik!
+  const { data: task, error: fetchError } = await supabase
+    .from('tasks')
+    .select('user_id, assignees, participants, assignee_roles, participant_roles, workspace_id')
+    .eq('id', taskId)
+    .single()
+
+  if (fetchError) {
+    console.error("❌ Hiba a feladat lekérésekor:", fetchError)
+    return { error: `Adatbázis hiba: ${fetchError.message}` }
+  }
+  
   if (!task) return { error: 'Feladat nem található.' }
 
-  // HA NEM Ő HOZTA LÉTRE ÉS NEM Ő A FELELŐS -> RBAC ellenőrzés
-  if (task.user_id !== user.id && task.assignee_id !== user.id) {
-    const isOwner = await isWorkspaceOwner(supabase, task.workspace_id, user.id)
-    if (!isOwner && !(await checkPermission(task.workspace_id, 'task:edit_others'))) {
-      return { error: 'Nincs jogosultságod mások feladatát módosítani!' }
-    }
+  const hasAccess = await canManageTask(supabase, task.workspace_id, task, user.id, 'task:edit_others')
+  if (!hasAccess) return { error: 'Nincs jogosultságod mások feladatát módosítani!' }
+
+  // Hozzáadtuk az "updateError"-t is a mentéshez
+  const { error: updateError } = await supabase
+    .from('tasks')
+    .update(updates)
+    .eq('id', taskId)
+
+  if (updateError) {
+    console.error("❌ Hiba a feladat mentésekor:", updateError)
+    return { error: `Nem sikerült menteni: ${updateError.message}` }
   }
 
-  const { error } = await supabase.from('tasks').update(updates).eq('id', taskId)
-  if (error) return { error: 'Nem sikerült menteni a részleteket.' }
   return { success: true }
 }
 
@@ -213,14 +274,11 @@ export async function updateTaskOrders(updates: { id: string; status: string; po
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  // Egyszerűsítés: Feltételezzük, hogy ha az elsőt mozgathatja, a többit is.
   if (updates.length > 0) {
-    const { data: task } = await supabase.from('tasks').select('user_id, assignee_id, workspace_id').eq('id', updates[0].id).single()
-    if (task && task.user_id !== user.id && task.assignee_id !== user.id) {
-      const isOwner = await isWorkspaceOwner(supabase, task.workspace_id, user.id)
-      if (!isOwner && !(await checkPermission(task.workspace_id, 'task:edit_others'))) {
-        return { error: 'Nincs jogosultságod mások feladatát átrendezni!' }
-      }
+    const { data: task } = await supabase.from('tasks').select('user_id, assignees, participants, assignee_roles, participant_roles, workspace_id').eq('id', updates[0].id).single()
+    if (task) {
+      const hasAccess = await canManageTask(supabase, task.workspace_id, task, user.id, 'task:edit_others')
+      if (!hasAccess) return { error: 'Nincs jogosultságod átrendezni ezeket a feladatokat!' }
     }
   }
 
@@ -238,15 +296,11 @@ export async function deleteTask(taskId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nincs jogosultságod.' }
 
-  const { data: task } = await supabase.from('tasks').select('user_id, workspace_id').eq('id', taskId).single()
+  const { data: task } = await supabase.from('tasks').select('user_id, assignees, participants, assignee_roles, participant_roles, workspace_id').eq('id', taskId).single()
   if (!task) return { error: 'Feladat nem található.' }
 
-  if (task.user_id !== user.id) {
-    const isOwner = await isWorkspaceOwner(supabase, task.workspace_id, user.id)
-    if (!isOwner && !(await checkPermission(task.workspace_id, 'task:delete'))) {
-      return { error: 'Nincs jogosultságod mások feladatát törölni!' }
-    }
-  }
+  const hasAccess = await canManageTask(supabase, task.workspace_id, task, user.id, 'task:delete')
+  if (!hasAccess) return { error: 'Nincs jogosultságod mások feladatát törölni!' }
 
   const { data: attachments } = await supabase.from('attachments').select('file_url').eq('task_id', taskId)
   if (attachments && attachments.length > 0) {

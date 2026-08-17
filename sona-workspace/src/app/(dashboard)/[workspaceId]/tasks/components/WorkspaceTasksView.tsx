@@ -2,22 +2,39 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Clock, Flag, FolderKanban, CheckCircle2, Circle, User as UserIcon } from 'lucide-react'
+import { Calendar, Clock, Flag, FolderKanban, Shield, CheckCircle2, Circle, User as UserIcon } from 'lucide-react'
 import { TaskModal, type Task } from '../../projects/components/TaskModal'
 import { Avatar } from '@/components/ui/Avatar'
-
-// Kiterjesztjük a Task típust a projekt nevével (amit a Supabase JOIN hozott le)
-type WorkspaceTask = Task & { 
-  projects?: { name: string } 
+export type WorkspaceTask = {
+  id: string
+  title: string
+  status: string
+  position: number
+  start_date: string | null
+  due_date: string | null
+  estimated_hours: number | null
+  description?: string | null
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  project_id: string
+  projects?: { name: string }
+  user_id?: string
+  // 🚀 ÚJ TÖMB MEZŐK A RÉGI assignee_id HELYETT:
+  assignees?: string[]
+  participants?: string[]
+  assignee_roles?: string[]
+  participant_roles?: string[]
 }
 
 type Props = {
   initialTasks: WorkspaceTask[]
-  members: { id: string, email: string, name: string, avatar_url?: string }[]
+  members: { user_id: string, email: string, name: string, avatar_url?: string }[]
   workspaceId: string
   currentUserId: string
-  hasEditOthersPerm: boolean     // <-- ÚJ
-  hasDeleteOthersPerm: boolean   // <-- ÚJ
+  hasEditOthersPerm: boolean
+  hasDeleteOthersPerm: boolean
+  // 🚀 ÚJ PROP-OK:
+  currentUserRoleIds: string[]
+  roles: any[]
 }
 
 const COLUMNS = [
@@ -27,7 +44,7 @@ const COLUMNS = [
   { id: 'done', title: 'Kész', color: 'bg-green-500', iconColor: 'text-green-500' }
 ] as const
 
-export function WorkspaceTasksView({ initialTasks, members, workspaceId, currentUserId, hasEditOthersPerm, hasDeleteOthersPerm }: Props) {  
+export function WorkspaceTasksView({ initialTasks, members, workspaceId, currentUserId, hasEditOthersPerm, hasDeleteOthersPerm, currentUserRoleIds, roles }: Props) {
   const router = useRouter()
   const [tasks, setTasks] = useState<WorkspaceTask[]>(initialTasks)
   const [showOnlyMine, setShowOnlyMine] = useState(false)
@@ -38,7 +55,7 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
 
   // Szűrés logika
   const filteredTasks = tasks.filter(task => {
-    if (showOnlyMine) return task.assignee_id === currentUserId
+    if (showOnlyMine) return task.assignees?.includes(currentUserId)
     return true
   })
 
@@ -56,11 +73,7 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
     router.refresh()
   }
 
-  // Segédfüggvény a felelős nevének kiírásához
-  const getAssigneeName = (id: string | null | undefined) => {
-    if (!id) return 'Nincs felelős'
-    return members.find(m => m.id === id)?.name || 'Ismeretlen'
-  }
+  
 
   return (
     <div className="flex flex-col gap-6">
@@ -165,17 +178,19 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
                         )}
 
                         {/* Felelős (Avatar) */}
-                      <div className="flex items-center gap-2 w-32 justify-end" title={getAssigneeName(task.assignee_id)}>
-                        <span className="text-xs font-medium text-sona-neutral truncate hidden lg:block">
-                          {getAssigneeName(task.assignee_id)}
-                        </span>
-                        <Avatar 
-                          name={getAssigneeName(task.assignee_id)} 
-                          url={members.find(m => m.id === task.assignee_id)?.avatar_url}
-                          className="w-7 h-7 text-[10px]"
-                          fallbackClass={task.assignee_id ? 'bg-primary/10 text-primary border-primary/20' : 'bg-sona-neutral/10 text-sona-neutral border-border border-dashed'}
-                        />
-                      </div>
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
+    {task.assignees?.map(uid => {
+        const u = members.find(m => m.user_id === uid)
+        return <Avatar key={uid} name={u?.name || u?.email} url={u?.avatar_url} className="w-6 h-6 text-[10px] ring-2 ring-background shadow-sm" />
+    })}
+    {task.assignee_roles?.map(rid => {
+        const r = roles.find(ro => ro.id === rid)
+        return <div key={rid} className="w-6 h-6 rounded-full bg-primary/10 ring-2 ring-background flex items-center justify-center text-primary shadow-sm" title={`Felelős szerepkör: ${r?.name}`}><Shield className="w-3 h-3" /></div>
+    })}
+    {(!task.assignees?.length && !task.assignee_roles?.length) && (
+        <div className="text-[10px] font-bold text-sona-neutral bg-sona-neutral/10 px-2 py-0.5 rounded uppercase tracking-wider">Nincs felelős</div>
+    )}
+</div>
 
                       </div>
                     </div>
@@ -196,7 +211,7 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
       </div>
 
 {/* ÚJRAHASZNOSÍTOTT MODAL */}
-      <TaskModal
+<TaskModal
         task={selectedTask}
         isOpen={isModalOpen}
         workspaceId={workspaceId}
@@ -208,7 +223,11 @@ export function WorkspaceTasksView({ initialTasks, members, workspaceId, current
         onDelete={handleTaskDelete}
         currentUserId={currentUserId}              
         hasEditOthersPerm={hasEditOthersPerm}      
-        hasDeleteOthersPerm={hasDeleteOthersPerm} 
+        hasDeleteOthersPerm={hasDeleteOthersPerm}
+        // 🚀 ÚJ ADATOK ÁTADÁSA:
+        currentUserRoleIds={currentUserRoleIds}
+        members={members}
+        roles={roles}
       />
 
     </div>

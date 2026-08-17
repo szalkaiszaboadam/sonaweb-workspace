@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, Plus, Trash2, Calendar as CalendarIcon, Timer, FileText, CheckCircle2, Play, CheckSquare, Loader2, Edit3, FolderKanban } from 'lucide-react'
+// HOZZÁADTUK A LOCK IKONT
+import { Clock, Plus, Trash2, Calendar as CalendarIcon, Timer, FileText, CheckCircle2, Play, CheckSquare, Loader2, Edit3, FolderKanban, Lock, User, X, Check, Info } from 'lucide-react'
 import { addTimeEntry, deleteTimeEntry, updateTimeEntry } from '../actions'
 import { Button } from '@/components/ui/Button'
 import { useGlobalTimer } from '@/hooks/useGlobalTimer'
@@ -10,6 +11,7 @@ import { Avatar } from '@/components/ui/Avatar'
 
 export type TimeEntry = {
   id: string
+  user_id: string // <-- HOZZÁADVA a jogosultság ellenőrzéshez!
   description: string
   date: string
   duration_minutes: number
@@ -25,16 +27,22 @@ export type TimeEntry = {
 export type SimpleProject = { id: string, name: string }
 export type SimpleTask = { id: string, title: string, project_id?: string }
 
+// 2. Keresd meg a Props definíciót, és add hozzá ezt a sort:
 type Props = {
   initialEntries: TimeEntry[]
-  projects?: SimpleProject[] // Opcionális, csak workspace nézetben kell
+  projects?: SimpleProject[] 
   projectTasks: SimpleTask[]
   workspaceId: string
-  projectId?: string // Ha van, akkor be van zárva a projektre
+  projectId?: string 
+  currentUserId: string          
+  hasEditOthersPerm: boolean     
+  hasDeleteOthersPerm: boolean   
+  hasViewOthersPerm: boolean     // <--- ÚJ PROP!
 }
 
-export function TimeManager({ initialEntries, projects, projectTasks, workspaceId, projectId }: Props) {
-  const router = useRouter()
+
+export function TimeManager({ initialEntries, projects, projectTasks, workspaceId, projectId, currentUserId, hasEditOthersPerm, hasDeleteOthersPerm, hasViewOthersPerm }: Props) {
+const router = useRouter()
   const [entries, setEntries] = useState<TimeEntry[]>(initialEntries)
 
   useEffect(() => { setEntries(initialEntries) }, [initialEntries])
@@ -51,7 +59,6 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
   const [hours, setHours] = useState('')
   const [minutes, setMinutes] = useState('')
 
-  // SZERKESZTÉS ÁLLAPOTAI
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<TimeEntry>>({})
 
@@ -60,7 +67,7 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
   const handleStartTimer = () => {
     setError(null)
     start(workspaceId, selectedProject || null, description, selectedTask || null)
-    setDescription('') // Kiürítjük a formot
+    setDescription('') 
   }
 
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -78,7 +85,7 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
     if (result.error) setError(result.error)
     else {
       setDescription(''); setHours(''); setMinutes(''); setSelectedTask('')
-      if (!projectId) setSelectedProject('') // Ha workspace nézet, ürítsük ki
+      if (!projectId) setSelectedProject('') 
       router.refresh()
     }
     setIsLoading(false)
@@ -116,14 +123,11 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
   }
 
   const totalMinutes = entries.reduce((sum, entry) => sum + entry.duration_minutes, 0)
-
-  // Feladatok szűrése a kiválasztott projekt alapján
   const availableTasks = projectTasks.filter(t => !selectedProject || t.project_id === selectedProject)
 
   return (
     <div className="flex flex-col gap-6 pb-10">
       
-      {/* 1. STATISZTIKA */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-surface border border-border p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
           <div className="flex items-center gap-2 text-sona-neutral mb-2">
@@ -139,7 +143,6 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
 
       <div className="flex flex-col lg:flex-row gap-6 items-start mt-2">
         
-        {/* 2. RÖGZÍTŐ (Bento Card) */}
         <div className="w-full lg:w-4/12 bg-surface border border-border rounded-2xl shadow-sm shrink-0 overflow-hidden">
           
           <div className="flex items-center border-b border-border bg-sona-neutral/5">
@@ -169,7 +172,6 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
                 </div>
               )}
 
-              {/* Ha van projekt kiválasztva (vagy be van zárva), mutassuk a feladatokat is */}
               {selectedProject && (
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-foreground">Feladat</label>
@@ -217,11 +219,22 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
           </div>
         </div>
 
-        {/* 3. NAPLÓZOTT IDŐK LISTÁJA */}
+{/* 3. NAPLÓZOTT IDŐK LISTÁJA */}
         <div className="flex-1 w-full flex flex-col gap-3">
-          <h2 className="text-lg font-bold text-foreground mb-1 flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-green-500" /> Naplózott munkaidő
-          </h2>
+          
+          <div className="mb-1">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-500" /> Naplózott munkaidő
+            </h2>
+            
+            {/* 🚀 AZ ÚJ JELZÉS: Ha NINCS joga másokat látni, kiírjuk neki! */}
+            {!hasViewOthersPerm && (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-sona-neutral mt-1.5 bg-sona-neutral/5 p-2 rounded-lg border border-border w-fit">
+                <Info className="w-3.5 h-3.5 shrink-0" />
+                Jelenleg csak a saját időbejegyzéseidet látod (nincs jogosultságod a csapat idejének megtekintéséhez).
+              </p>
+            )}
+          </div>
           
           {entries.length === 0 ? (
             <div className="bg-surface/50 border border-dashed border-border rounded-2xl p-10 flex flex-col items-center justify-center text-center">
@@ -234,7 +247,11 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
               <div className="divide-y divide-border">
                 {entries.map(entry => {
                   
-                  // SZERKESZTŐ MÓD
+                  // 🚀 ITT DŐL EL A JOGOSULTSÁG SORONKÉNT!
+                  const isOwnEntry = entry.user_id === currentUserId
+                  const canEditEntry = isOwnEntry || hasEditOthersPerm
+                  const canDeleteEntry = isOwnEntry || hasDeleteOthersPerm
+
                   if (editingId === entry.id) {
                     return (
                       <div key={entry.id} className="p-4 bg-primary/5 flex flex-col gap-4 animate-in fade-in">
@@ -269,7 +286,6 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
                     )
                   }
 
-                  // NORMÁL NÉZET
                   const h = Math.floor(entry.duration_minutes / 60)
                   const m = entry.duration_minutes % 60
                   const timeString = `${h > 0 ? `${h}ó ` : ''}${m > 0 ? `${m}p` : ''}`
@@ -293,7 +309,6 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
                           )}
                         </div>
                        <div className="flex items-center gap-4 mt-1.5">
-                          {/* Szép, nagy profilkép és kiemelt név */}
                           <div className="flex items-center gap-2">
                             <Avatar 
                               name={entry.user_email} 
@@ -304,10 +319,7 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
                               {entry.user_email}
                             </span>
                           </div>
-
                           <span className="w-1.5 h-1.5 rounded-full bg-border" />
-                          
-                          {/* Dátum egy picit halványabban */}
                           <span className="flex items-center gap-1.5 text-xs font-medium text-sona-neutral">
                             <CalendarIcon className="w-3.5 h-3.5" /> 
                             {new Date(entry.date).toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })}
@@ -319,15 +331,26 @@ export function TimeManager({ initialEntries, projects, projectTasks, workspaceI
                         <span className="font-mono font-bold text-sm bg-sona-neutral/10 px-2.5 py-1 rounded text-foreground border border-border shadow-sm">
                           {timeString}
                         </span>
-                        {/* Láthatatlan gombok, hover-re előjönnek */}
+                        
+                       {/* 🔒 CSAK AKKOR LÁTJA A GOMBOKAT, HA JOGA VAN HOZZÁ! */}
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => startEditing(entry)} className="p-1.5 text-sona-neutral hover:text-primary hover:bg-primary/10 rounded-md transition-colors" title="Szerkesztés">
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDelete(entry.id)} className="p-1.5 text-sona-neutral hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors" title="Törlés">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canEditEntry && (
+                            <button onClick={() => startEditing(entry)} className="p-1.5 text-sona-neutral hover:text-primary hover:bg-primary/10 rounded-md transition-colors" title="Szerkesztés">
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canDeleteEntry && (
+                            <button onClick={() => handleDelete(entry.id)} className="p-1.5 text-sona-neutral hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors" title="Törlés">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {!canEditEntry && !canDeleteEntry && (
+                            <span title="Nem módosíthatod mások idejét">
+                              <Lock className="w-4 h-4 text-sona-neutral/40" />
+                            </span>
+                          )}
                         </div>
+                        
                       </div>
                     </div>
                   )

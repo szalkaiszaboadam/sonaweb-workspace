@@ -7,14 +7,13 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { saveRole, deleteRole } from '../roleActions'
-import { PERMISSION_DEFINITIONS, PERMISSION_GROUPS } from '@/lib/permissions.constants'
+import { PERMISSION_DEFINITIONS, PERMISSION_GROUPS, WorkspacePermission } from '@/lib/permissions.constants'
 
 export type CustomRole = {
   id: string
   name: string
   permissions: string[]
 }
-
 
 export function RolesManager({ workspaceId, roles, canManage }: { workspaceId: string, roles: CustomRole[], canManage: boolean }) {
   const router = useRouter()
