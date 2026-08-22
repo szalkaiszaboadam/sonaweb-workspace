@@ -1,10 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { ChevronLeft } from 'lucide-react'
-import { ProjectNavbar } from '../components/ProjectNavbar'
 import { getProjectIcon, getProjectColor } from '@/lib/project-icons'
-import { checkPermission } from '@/lib/permissions' // <-- ÚJ IMPORT
 
 const STATUS_MAP = {
   planning: { label: 'Tervezés alatt', class: 'bg-slate-500/10 text-slate-500 border-slate-500/20' },
@@ -35,38 +31,15 @@ export default async function ProjectLayout({
 
   if (!project) redirect(`/${workspaceId}/projects`)
 
-  const { data: memberData } = await supabase.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', user.id).single()
-
-// 🚀 AZ ÚJ JOGOSULTSÁG SZÁMÍTÓ LOGIKA:
-  const isWorkspaceOwner = memberData?.role === 'owner'
-  const isProjectCreator = project.user_id === user.id
-  
-  // Lekérjük az összes ide vonatkozó extra jogot:
-  const hasEdit = await checkPermission(workspaceId, 'project:edit')
-  const hasDelete = await checkPermission(workspaceId, 'project:delete')
-  const hasAccess = await checkPermission(workspaceId, 'project:manage_access')
-
-  // Ha a fentiek közül BÁRMELYIK igaz rá, akkor a lakat lekerül a projekt belső "Beállítások" menüjéről!
-  const isManager = isWorkspaceOwner || isProjectCreator || hasEdit || hasDelete || hasAccess
-  
   const Icon = getProjectIcon(project.emoji)
   const colorTheme = getProjectColor(project.color)
   const statusConfig = STATUS_MAP[project.status as keyof typeof STATUS_MAP] || STATUS_MAP.planning
 
   return (
-    <div className="w-full flex flex-col h-full animate-in fade-in duration-500">
+    <div className="w-full flex flex-col h-full animate-in fade-in duration-500 p-2 sm:p-4">
       
-      <div className="mb-2">
-        <Link 
-          href={`/${workspaceId}/projects`}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-sona-neutral hover:text-foreground transition-colors -ml-1"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-          Projektek
-        </Link>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+      {/* Projekt Fejléc (Már nincs benne vissza gomb, mert a Breadcrumb mutatja!) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center shadow-sm border ${colorTheme.bg} ${colorTheme.text} ${colorTheme.border}`}>
             <Icon className="w-5 h-5" strokeWidth={2.5} />
@@ -83,12 +56,10 @@ export default async function ProjectLayout({
         </div>
       </div>
 
-      {/* Átadjuk az okosított isManager változót a Navbarnak, ami így már le fogja venni a lakatot! */}
-      <ProjectNavbar workspaceId={workspaceId} projectId={projectId} isManager={isManager} />
-
-      <div className="flex-1 mt-4">
+      <div className="flex-1">
         {children}
       </div>
+      
     </div>
   )
 }

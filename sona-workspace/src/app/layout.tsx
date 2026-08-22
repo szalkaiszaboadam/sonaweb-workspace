@@ -21,8 +21,8 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light" /* 🚀 JAVÍTÁS: Alapból mindenhol világos mód van! */
+          enableSystem /* 🚀 JAVÍTÁS: Meghagyjuk, hogy a profilban lehessen "Auto"-t (System) is választani */
           disableTransitionOnChange
         >
           {children}
